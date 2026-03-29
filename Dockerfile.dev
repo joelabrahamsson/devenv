@@ -1,0 +1,87 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYENV_ROOT=/home/dev/.pyenv
+ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/home/dev/.local/bin:$PATH"
+
+RUN apt-get update && apt-get install -y \
+    git curl wget build-essential \
+    ca-certificates gnupg tmux jq \
+    fish unzip python3 python3-yaml \
+    libssl-dev libffi-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev \
+    libncurses5-dev libncursesw5-dev xz-utils \
+    liblzma-dev tk-dev
+
+# Create non-root user (required for --dangerously-skip-permissions in Claude Code)
+RUN useradd -m -s /usr/bin/fish dev
+
+# Node.js LTS via NodeSource (stable system-wide install, known PATH)
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs
+
+# Bun (required by Compound Engineering plugin tooling)
+# Installed to /usr/local/bin so all users can access it
+RUN curl -fsSL https://bun.sh/install | bash && \
+    mv /root/.bun/bin/bun /usr/local/bin/bun && \
+    chmod 755 /usr/local/bin/bun && \
+    ln -s /usr/local/bin/bun /usr/local/bin/bunx
+
+# GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
+    https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y gh
+
+# Claude Code + Compound Engineering plugin CLI
+RUN npm install -g @anthropic-ai/claude-code @every-env/compound-plugin
+
+# Docker Compose — installed as docker-compose-real.
+# The allowlist wrapper (mounted from Mac at /etc/docker-allowlist) is
+# copied over this as docker-compose at container creation time by the dev function.
+RUN curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" \
+    -o /usr/local/bin/docker-compose-real && \
+    chmod 755 /usr/local/bin/docker-compose-real
+
+# Directory for docker allowlist (contents mounted read-only from Mac at runtime)
+RUN mkdir -p /etc/docker-allowlist
+
+# Switch to non-root user for all remaining setup
+USER dev
+
+# Install Compound Engineering plugin into ~/.claude/
+# Cloned directly from GitHub — the plugin CLI has no native Claude Code target,
+# so we copy files from the known repo structure instead.
+RUN git clone --depth 1 https://github.com/EveryInc/compound-engineering-plugin /tmp/ce-plugin && \
+    mkdir -p /home/dev/.claude/commands /home/dev/.claude/agents /home/dev/.claude/skills && \
+    cp -r /tmp/ce-plugin/.claude/commands/. /home/dev/.claude/commands/ && \
+    cp -r /tmp/ce-plugin/plugins/compound-engineering/agents/. /home/dev/.claude/agents/ && \
+    cp -r /tmp/ce-plugin/plugins/compound-engineering/skills/. /home/dev/.claude/skills/ && \
+    rm -rf /tmp/ce-plugin
+
+# nvm.fish — fish-native Node version manager for per-project switching.
+# The system Node (NodeSource) is the default; nvm.fish is available for
+# projects that need a specific version via `nvm install <version>`.
+RUN fish -c "curl -sL https://raw.githubusercontent.com/jorgebucaran/fisher/main/functions/fisher.fish \
+    | source && fisher install jorgebucaran/nvm.fish"
+
+# Python 3.13 via pyenv — avoids system Python conflicts, allows per-project versions
+RUN curl -fsSL https://pyenv.run | bash \
+    && eval "$(pyenv init -)" \
+    && pyenv install 3.13 \
+    && pyenv global 3.13
+
+# uv — fast Python package manager (replaces pip/virtualenv/poetry)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Fish shell config
+RUN mkdir -p /home/dev/.config/fish && printf '%s\n' \
+    'pyenv init - fish | source' \
+    'fish_add_path /home/dev/.local/bin' \
+    'alias g git' \
+    > /home/dev/.config/fish/config.fish
+
+WORKDIR /workspace
+CMD ["fish"]

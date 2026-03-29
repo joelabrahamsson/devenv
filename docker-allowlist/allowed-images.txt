@@ -1,0 +1,26 @@
+# docker-allowlist/allowed-images.txt
+#
+# One image name prefix per line. Prefix matching is used, so "postgres"
+# covers postgres:15, postgres:16, postgres:latest, etc.
+#
+# The docker-compose-wrapper.sh script reads this file before allowing
+# docker-compose up/run/start to execute. If a compose file references an
+# image not on this list, the command is blocked.
+#
+# To allow a new image: add it here. No container rebuild needed —
+# recreate the container with: podman rm -f <project> && dev <project>
+#
+# Lines starting with # are comments and are ignored.
+
+postgres
+redis
+mysql
+mariadb
+mongo
+rabbitmq
+elasticsearch
+opensearch
+mailhog
+mailpit
+minio
+localstack

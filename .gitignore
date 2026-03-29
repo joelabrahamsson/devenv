@@ -1,0 +1,6 @@
+# Never commit tokens or secrets
+.github-token
+.dev-init.fish
+
+# macOS
+.DS_Store
