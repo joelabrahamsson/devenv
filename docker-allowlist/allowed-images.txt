@@ -24,3 +24,6 @@ mailhog
 mailpit
 minio
 localstack
+byparr
+python
+node

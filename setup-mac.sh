@@ -30,7 +30,7 @@ echo "==> Configuring global gitignore..."
 GITIGNORE_GLOBAL="$HOME/.gitignore_global"
 touch "$GITIGNORE_GLOBAL"
 
-for entry in ".github-token" ".dev-init.fish"; do
+for entry in ".github-token" ".dev-init.fish" ".devenv-parent"; do
     if ! grep -qxF "$entry" "$GITIGNORE_GLOBAL"; then
         echo "$entry" >> "$GITIGNORE_GLOBAL"
         echo "    Added $entry to $GITIGNORE_GLOBAL"
@@ -45,6 +45,27 @@ echo "    Set core.excludesfile to $GITIGNORE_GLOBAL"
 echo "==> Creating ~/projects directory..."
 mkdir -p "$HOME/projects"
 
+echo "==> Configuring user identity..."
+DEVENV_CONFIG_DIR="$HOME/.config/devenv"
+DEVENV_CONFIG="$DEVENV_CONFIG_DIR/config"
+mkdir -p "$DEVENV_CONFIG_DIR"
+
+if [ -f "$DEVENV_CONFIG" ]; then
+    echo "    Config already exists at $DEVENV_CONFIG, skipping."
+else
+    read -p "Your full name (for git commits): " user_name
+    read -p "Your email (for git commits): " user_email
+
+    if [ -z "$user_name" ] || [ -z "$user_email" ]; then
+        echo "ERROR: Name and email are required."
+        exit 1
+    fi
+
+    echo "DEVENV_USER_NAME=$user_name" > "$DEVENV_CONFIG"
+    echo "DEVENV_USER_EMAIL=$user_email" >> "$DEVENV_CONFIG"
+    echo "    Saved to $DEVENV_CONFIG"
+fi
+
 echo "==> Installing dev function into fish config..."
 FISH_CONFIG="$HOME/.config/fish/config.fish"
 mkdir -p "$HOME/.config/fish"
@@ -52,21 +73,52 @@ touch "$FISH_CONFIG"
 
 DEV_FUNCTION_SOURCE="$SCRIPT_DIR/fish/dev.fish"
 
-if ! grep -q "function dev" "$FISH_CONFIG"; then
+if grep -q "source.*dev.fish" "$FISH_CONFIG"; then
+    echo "    dev function already sourced from $DEV_FUNCTION_SOURCE"
+elif ! grep -q "function dev" "$FISH_CONFIG"; then
     echo "" >> "$FISH_CONFIG"
     echo "# Sandboxed development environment — loaded from $DEV_FUNCTION_SOURCE" >> "$FISH_CONFIG"
     echo "source $DEV_FUNCTION_SOURCE" >> "$FISH_CONFIG"
     echo "    Added dev function to $FISH_CONFIG"
 else
-    echo "    dev function already in $FISH_CONFIG"
-    echo "    If you want to update it, the source line points to $DEV_FUNCTION_SOURCE"
-    echo "    Edit that file directly — changes take effect on next fish reload."
+    echo "    Found inline 'dev' function — replacing with source line..."
+    # Create a temp file with the inline function removed and source line added
+    python3 -c "
+import re, sys
+with open('$FISH_CONFIG') as f:
+    content = f.read()
+# Remove the inline function block (function dev ... end)
+content = re.sub(r'\n*# Sandboxed development environment[^\n]*\n', '\n', content)
+content = re.sub(r'function dev\b.*?^end\n?', '', content, flags=re.DOTALL | re.MULTILINE)
+# Append the source line
+content = content.rstrip() + '\n\n# Sandboxed development environment — loaded from $DEV_FUNCTION_SOURCE\nsource $DEV_FUNCTION_SOURCE\n'
+with open('$FISH_CONFIG', 'w') as f:
+    f.write(content)
+"
+    echo "    Replaced inline function with: source $DEV_FUNCTION_SOURCE"
 fi
+
+echo "==> Installing Claude Code skills and agents..."
+CLAUDE_DIR="$HOME/.claude"
+mkdir -p "$CLAUDE_DIR"
+# Copy skills and agents from claude-config/ to ~/.claude/, preserving directory structure.
+# Existing files are overwritten to pick up updates from the repository.
+cp -r "$SCRIPT_DIR/claude-config/skills" "$CLAUDE_DIR/" 2>/dev/null || true
+cp -r "$SCRIPT_DIR/claude-config/agents" "$CLAUDE_DIR/" 2>/dev/null || true
+# Copy CLAUDE.md and other root-level config files (but not skills/agents dirs again)
+for f in "$SCRIPT_DIR/claude-config"/*; do
+    if [ -f "$f" ]; then
+        cp "$f" "$CLAUDE_DIR/"
+    fi
+done
+echo "    Installed to $CLAUDE_DIR"
+
+echo "==> Building container image..."
+podman build -t devenv -f "$SCRIPT_DIR/Dockerfile.dev" "$SCRIPT_DIR"
 
 echo ""
 echo "✓ Mac setup complete."
 echo ""
 echo "Next steps:"
 echo "  1. Reload fish config:   source ~/.config/fish/config.fish"
-echo "  2. Build the image:      podman build -t devenv -f Dockerfile.dev ."
-echo "  3. Start a project:      dev <project-name>"
+echo "  2. Start a project:      dev <project-name>"
