@@ -224,6 +224,11 @@ function dev
         echo "⚠ Docker daemon did not start — docker-compose may not work"
     end
 
+    # Restrict the DinD volume mount directory so the dev user cannot bypass the
+    # filtering proxy by accessing the real Docker socket directly.
+    # This is the primary defense — the proxy also re-applies permissions periodically.
+    podman exec --user root $project chmod 700 /var/run/docker-dind 2>/dev/null
+
     # Start the socket proxy if not already running (it stops on container restart).
     # The proxy listens on /var/run/docker.sock (accessible by dev user) and
     # forwards filtered requests to /var/run/docker-dind/docker.sock (root-only).
@@ -277,12 +282,11 @@ function dev
         # for use on the Mac side).
         podman exec $project git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-        # Protect git hooks from being written by the agent.
-        # Hooks in /workspace/.git/hooks/ would execute on the Mac when the user
-        # runs git outside the container — a sandbox escape vector. Replace the
-        # hooks directory with a symlink to /dev/null (created as root, so the
-        # dev user can't remove or replace it). Git on both the Mac and container
-        # sides will find no executable hooks.
+        # Defense-in-depth for git hooks. The primary defense is the Mac-side
+        # core.hooksPath (set by setup-mac.sh) which points Mac git away from
+        # /workspace/.git/hooks/. This symlink is a secondary barrier — the dev
+        # user CAN remove it (since /workspace is writable), but Mac-side git
+        # won't look in .git/hooks/ regardless.
         podman exec --user root $project bash -c "
             mkdir -p /home/dev/.safe-hooks
             chown dev:dev /home/dev/.safe-hooks

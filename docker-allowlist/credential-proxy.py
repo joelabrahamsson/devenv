@@ -4,11 +4,19 @@ Git credential proxy.
 
 Runs as root inside the container, serving git credentials over a Unix socket.
 The dev user's git credential helper queries this proxy instead of reading the
-raw token file, so the token is never directly accessible to the agent.
+raw token file.
 
-Protocol: the client connects and sends git credential protocol lines
-(protocol, host, path, etc.). The proxy only responds with credentials
-when host=github.com, preventing token exfiltration to other hosts.
+Security guarantees:
+  1. Host restriction — credentials are only served for github.com, preventing
+     the agent from forwarding the token to attacker-controlled git remotes.
+  2. No passive file access — the token file (/run/secrets/github-token) is
+     root-only, so tools scanning the filesystem won't discover it.
+
+Known limitation: the dev user CAN query this proxy directly (e.g., via a
+socket connection sending protocol=https/host=github.com) and obtain the raw
+token. This is inherent — git itself needs the token, and the dev user runs
+git. The proxy prevents *passive* discovery and *misdirected* use, not
+*determined* extraction.
 """
 
 import os

@@ -162,21 +162,40 @@ except Exception as e:
                 exit 1
             fi
         done <<< "$images"
+
+        # TOCTOU mitigation: snapshot the validated compose file to a temp directory.
+        # The dev user controls /workspace and could swap the file between our
+        # validation and docker-compose-real's read. The socket proxy provides
+        # authoritative enforcement at pull time, but this snapshot closes the
+        # race at the wrapper level.
+        SNAPSHOT_DIR=$(mktemp -d /tmp/compose-snapshot.XXXXXX)
+        trap '[[ -n "$SNAPSHOT_DIR" ]] && rm -rf "$SNAPSHOT_DIR"' EXIT
+        cp "$COMPOSE_FILE" "$SNAPSHOT_DIR/docker-compose.yml"
+        VALIDATED_COMPOSE="$SNAPSHOT_DIR/docker-compose.yml"
     fi
 fi
 
-# For up/run/start: run compose, then set up socat forwarding from localhost
-# to the DinD container for each published port.
-if [[ "$COMMAND" == "up" || "$COMMAND" == "run" || "$COMMAND" == "start" ]] && [[ -f "$COMPOSE_FILE" ]]; then
-    /usr/local/bin/docker-compose-real "$@"
+# For up/run/start: run compose using the validated snapshot (if available),
+# then set up socat forwarding from localhost to DinD for each published port.
+if [[ -n "$VALIDATED_COMPOSE" ]]; then
+    # Build args with -f pointing to validated snapshot and --project-directory
+    # to preserve relative path resolution from the original working directory.
+    compose_args=("--project-directory" "$PWD" "-f" "$VALIDATED_COMPOSE")
+    skip_next_arg=false
+    for arg in "$@"; do
+        if $skip_next_arg; then skip_next_arg=false; continue; fi
+        if [[ "$arg" == "-f" || "$arg" == "--file" ]]; then skip_next_arg=true; continue; fi
+        if [[ "$arg" == -f=* || "$arg" == --file=* ]]; then continue; fi
+        compose_args+=("$arg")
+    done
+
+    /usr/local/bin/docker-compose-real "${compose_args[@]}"
     COMPOSE_EXIT=$?
 
     if [[ $COMPOSE_EXIT -eq 0 ]]; then
-        # The DinD container name is derived from COMPOSE_PROJECT_NAME
         DIND_HOST="${COMPOSE_PROJECT_NAME}-dind"
 
-        # Extract published ports and set up socat forwarding
-        COMPOSE_FILE="$COMPOSE_FILE" /usr/bin/python3 -c "
+        COMPOSE_FILE="$VALIDATED_COMPOSE" /usr/bin/python3 -c "
 import yaml, os, re
 with open(os.environ['COMPOSE_FILE']) as f:
     data = yaml.safe_load(f)
@@ -191,10 +210,7 @@ for name, svc in services.items():
             print(f'{m.group(1)}:{m.group(2)}')
 " 2>/dev/null | while IFS=: read -r host_port container_port; do
             [[ -z "$host_port" ]] && continue
-            # Kill any existing socat on this port
             pkill -f "socat.*TCP-LISTEN:${host_port}," 2>/dev/null || true
-            # Forward localhost:<host_port> to DinD:<host_port>
-            # (DinD publishes compose ports on its network interface)
             socat TCP-LISTEN:${host_port},fork,reuseaddr \
                   TCP:${DIND_HOST}:${host_port} &
         done

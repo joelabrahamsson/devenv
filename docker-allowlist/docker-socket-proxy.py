@@ -34,6 +34,7 @@ import select
 import socket
 import sys
 import threading
+import time
 
 
 REAL_SOCKET = os.environ.get("DOCKER_SOCKET_REAL", "/var/run/docker-real.sock")
@@ -180,6 +181,15 @@ def check_container_create(body_bytes):
             if isinstance(mount, dict) and mount.get("Type", "").lower() == "bind":
                 return False, f"Bind mounts are not allowed: {mount.get('Source', '')}"
 
+    # Validate image against allowlist — prevents creating containers from
+    # cached images that are not (or no longer) on the allowlist.
+    image = config.get("Image", "")
+    if image:
+        image_base = image.split(":")[0]
+        allowed_images = load_allowlist()
+        if image_base not in allowed_images:
+            return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
+
     return True, ""
 
 
@@ -212,6 +222,31 @@ def check_image_pull(path):
         return True, ""
 
     return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
+
+
+def monitor_permissions():
+    """Periodically re-restrict the real socket and its parent directory.
+
+    The DinD container shares the same volume and may recreate the socket
+    on restart, resetting permissions. This thread re-applies restrictions
+    every few seconds to minimize the bypass window.
+    """
+    real_dir = os.path.dirname(REAL_SOCKET)
+    while True:
+        try:
+            st = os.stat(real_dir)
+            if st.st_mode & 0o077:
+                os.chmod(real_dir, 0o700)
+        except OSError:
+            pass
+        try:
+            if os.path.exists(REAL_SOCKET):
+                st = os.stat(REAL_SOCKET)
+                if st.st_mode & 0o077:
+                    os.chmod(REAL_SOCKET, 0o600)
+        except OSError:
+            pass
+        time.sleep(5)
 
 
 def parse_http_request(data):
@@ -357,11 +392,18 @@ def main():
         print(f"ERROR: Real socket not found at {REAL_SOCKET}", file=sys.stderr)
         sys.exit(1)
 
-    # Restrict the real socket to root only, preventing bypass of the proxy
+    # Restrict the real socket's parent directory so non-root users cannot
+    # bypass the proxy by accessing the socket directly. The directory
+    # restriction is the primary defense; socket chmod is defense-in-depth.
+    real_dir = os.path.dirname(REAL_SOCKET)
+    try:
+        os.chmod(real_dir, 0o700)
+    except OSError as e:
+        print(f"WARNING: Could not restrict {real_dir}: {e}", file=sys.stderr)
     try:
         os.chmod(REAL_SOCKET, 0o600)
     except OSError:
-        pass  # best-effort on mounted socket
+        pass
 
     if os.path.exists(PROXY_SOCKET):
         os.unlink(PROXY_SOCKET)
@@ -374,6 +416,9 @@ def main():
     print(f"Docker socket proxy starting", file=sys.stderr)
     print(f"  Real socket: {REAL_SOCKET}", file=sys.stderr)
     print(f"  Proxy socket: {PROXY_SOCKET}", file=sys.stderr)
+
+    # Re-apply permissions periodically to defend against DinD restarts
+    threading.Thread(target=monitor_permissions, daemon=True).start()
 
     try:
         while True:

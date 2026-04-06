@@ -42,6 +42,15 @@ done
 git config --global core.excludesfile "$GITIGNORE_GLOBAL"
 echo "    Set core.excludesfile to $GITIGNORE_GLOBAL"
 
+echo "==> Configuring safe git hooks path..."
+# Prevent sandbox escape: without this, an agent inside the container could
+# plant malicious hooks in /workspace/.git/hooks/ which would execute on
+# the Mac when the user runs git outside the container.
+SAFE_HOOKS_DIR="$HOME/.config/git/hooks"
+mkdir -p "$SAFE_HOOKS_DIR"
+git config --global core.hooksPath "$SAFE_HOOKS_DIR"
+echo "    Set core.hooksPath to $SAFE_HOOKS_DIR"
+
 echo "==> Creating ~/projects directory..."
 mkdir -p "$HOME/projects"
 

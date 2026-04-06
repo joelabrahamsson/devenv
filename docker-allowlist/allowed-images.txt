@@ -1,7 +1,8 @@
 # docker-allowlist/allowed-images.txt
 #
-# One image name prefix per line. Prefix matching is used, so "postgres"
-# covers postgres:15, postgres:16, postgres:latest, etc.
+# One image name per line. Exact matching on the image name (before the colon)
+# is used, so "postgres" covers postgres:15, postgres:16, postgres:latest, etc.
+# but does NOT match "postgres/postgres" or "myregistry/postgres".
 #
 # The docker-compose-wrapper.sh script reads this file before allowing
 # docker-compose up/run/start to execute. If a compose file references an
