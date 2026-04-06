@@ -209,19 +209,20 @@ def check_exec_create(body_bytes):
 def check_image_pull(path):
     """Check if the image being pulled is on the allowlist."""
     # Parse the image name from query params: /images/create?fromImage=postgres&tag=15
-    match = re.search(r"[?&]fromImage=([^&]+)", path)
-    if not match:
+    # Use findall to detect duplicate fromImage params — Docker uses the last value,
+    # so an attacker could send ?fromImage=postgres&fromImage=evil to bypass a
+    # first-match check. We validate ALL values to prevent this.
+    matches = re.findall(r"[?&]fromImage=([^&]+)", path)
+    if not matches:
         return False, "Could not determine image name from pull request"
 
-    image = match.group(1)
-    # Strip tag for matching (same logic as compose wrapper)
-    image_base = image.split(":")[0]
-
     allowed_images = load_allowlist()
-    if image_base in allowed_images:
-        return True, ""
+    for image in matches:
+        image_base = image.split(":")[0]
+        if image_base not in allowed_images:
+            return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
 
-    return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
+    return True, ""
 
 
 def monitor_permissions():

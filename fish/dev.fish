@@ -165,6 +165,17 @@ function dev
         set parent_marker ~/projects/$project/.devenv-parent
         if test -f $parent_marker
             set parent_project (cat $parent_marker)
+            # Validate parent project name to prevent path traversal.
+            # The agent controls /workspace and could write a malicious value
+            # (e.g., "../../.ssh") to .devenv-parent to mount arbitrary Mac dirs.
+            if not string match -qr '^[a-zA-Z0-9_-]+$' -- $parent_project
+                echo "ERROR: Invalid parent project name in .devenv-parent: '$parent_project'"
+                return 1
+            end
+            if not test -d ~/projects/$parent_project/.git
+                echo "ERROR: Parent project ~/projects/$parent_project does not exist"
+                return 1
+            end
             set create_args $create_args \
                 -v ~/projects/$parent_project/.git:/workspace-parent-git
         end
