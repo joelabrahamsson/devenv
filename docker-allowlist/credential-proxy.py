@@ -33,7 +33,9 @@ def handle_client(conn):
                 k, v = line.split("=", 1)
                 attrs[k.strip()] = v.strip()
 
-        if attrs.get("host") in ALLOWED_HOSTS and os.path.exists(TOKEN_FILE):
+        if (attrs.get("host") in ALLOWED_HOSTS
+                and attrs.get("protocol") == "https"
+                and os.path.exists(TOKEN_FILE)):
             with open(TOKEN_FILE) as f:
                 token = f.read().strip()
             conn.sendall(f"username=x-token\npassword={token}\n".encode())

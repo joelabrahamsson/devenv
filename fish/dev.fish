@@ -89,7 +89,7 @@ function dev
         echo "    Pull requests:    Read & Write  (create/update PRs)"
         echo "    Metadata:         Read          (required)"
         echo ""
-        read --prompt-str "Paste token (or press Enter to skip): " token
+        read --silent --prompt-str "Paste token (or press Enter to skip): " token
         if test -n "$token"
             echo $token > $token_file
             chmod 600 $token_file
@@ -279,16 +279,16 @@ function dev
 
         # Protect git hooks from being written by the agent.
         # Hooks in /workspace/.git/hooks/ would execute on the Mac when the user
-        # runs git outside the container — a sandbox escape vector. We make the
-        # hooks directory read-only inside the container and point git to a safe
-        # (empty) hooks directory.
+        # runs git outside the container — a sandbox escape vector. Replace the
+        # hooks directory with a symlink to /dev/null (created as root, so the
+        # dev user can't remove or replace it). Git on both the Mac and container
+        # sides will find no executable hooks.
         podman exec --user root $project bash -c "
             mkdir -p /home/dev/.safe-hooks
             chown dev:dev /home/dev/.safe-hooks
-            # Make .git/hooks read-only if it exists
             if [ -d /workspace/.git/hooks ]; then
-                chmod 555 /workspace/.git/hooks
-                chattr +i /workspace/.git/hooks 2>/dev/null || true
+                rm -rf /workspace/.git/hooks
+                ln -s /dev/null /workspace/.git/hooks
             fi
         "
         podman exec $project git config --global core.hooksPath /home/dev/.safe-hooks
@@ -385,7 +385,7 @@ function dev-worktree
         echo "    Pull requests:    Read & Write  (create/update PRs)"
         echo "    Metadata:         Read          (required)"
         echo ""
-        read --prompt-str "Paste token (or press Enter to skip): " token
+        read --silent --prompt-str "Paste token (or press Enter to skip): " token
         if test -n "$token"
             echo $token > $token_dir/$project
             chmod 600 $token_dir/$project

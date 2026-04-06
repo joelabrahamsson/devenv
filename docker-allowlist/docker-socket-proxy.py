@@ -83,7 +83,9 @@ ALLOWED_ENDPOINTS = [
     ("GET", r"/images/[^/]+/json"),
     ("GET", r"/images/[^/]+/history"),
     ("POST", r"/images/[^/]+/tag"),
-    ("POST", r"/build"),                      # builds checked by compose wrapper
+    # /build is NOT allowed — agents could bypass the compose wrapper's FROM
+    # validation by calling the build API directly. Builds must go through
+    # docker-compose, which validates FROM directives before invoking compose-real.
     ("POST", r"/images/create"),              # pulls — inspected separately
 
     # Networks
