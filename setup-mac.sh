@@ -46,6 +46,9 @@ echo "==> Configuring safe git hooks path..."
 # Prevent sandbox escape: without this, an agent inside the container could
 # plant malicious hooks in /workspace/.git/hooks/ which would execute on
 # the Mac when the user runs git outside the container.
+# Global config is the baseline (covers non-fish contexts like GUI tools).
+# The fish env vars below provide command-line-level precedence that cannot
+# be overridden by local .git/config — this is the primary defense.
 SAFE_HOOKS_DIR="$HOME/.config/git/hooks"
 mkdir -p "$SAFE_HOOKS_DIR"
 git config --global core.hooksPath "$SAFE_HOOKS_DIR"
@@ -105,6 +108,25 @@ with open('$FISH_CONFIG', 'w') as f:
     f.write(content)
 "
     echo "    Replaced inline function with: source $DEV_FUNCTION_SOURCE"
+fi
+
+# Force core.hooksPath at command-line precedence via git env vars.
+# Git config precedence: system < global < local < command-line.
+# GIT_CONFIG_COUNT/KEY/VALUE have command-line precedence, so a malicious
+# .git/config inside /workspace cannot override the hooks path.
+HOOKS_ENV_MARKER="GIT_CONFIG_COUNT"
+if ! grep -q "$HOOKS_ENV_MARKER" "$FISH_CONFIG"; then
+    cat >> "$FISH_CONFIG" << 'HOOKEOF'
+
+# Sandbox safety: force core.hooksPath at command-line precedence.
+# Prevents agents from overriding hooksPath via local .git/config.
+set -gx GIT_CONFIG_COUNT 1
+set -gx GIT_CONFIG_KEY_0 core.hooksPath
+set -gx GIT_CONFIG_VALUE_0 ~/.config/git/hooks
+HOOKEOF
+    echo "    Added git hooks env vars to $FISH_CONFIG"
+else
+    echo "    Git hooks env vars already in $FISH_CONFIG, skipping."
 fi
 
 echo "==> Installing Claude Code skills and agents..."

@@ -152,6 +152,7 @@ function dev
             -v $devenv_dir/docker-allowlist:/etc/docker-allowlist:ro \
             -v $dind_volume:/var/run/docker-dind \
             --security-opt label=disable \
+            --security-opt no-new-privileges \
             --env COMPOSE_PROJECT_NAME=$project \
             --env DOCKER_HOST=unix:///var/run/docker.sock \
             --memory 8g \

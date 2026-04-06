@@ -343,6 +343,12 @@ def handle_client(client_sock):
             if content_length == 0:
                 send_error(client_sock, 400, "Missing Content-Length on inspected request")
                 return
+            # Cap body size to prevent OOM via crafted Content-Length.
+            # 10 MB is generous for any container/exec creation payload.
+            max_body = 10 * 1024 * 1024
+            if content_length > max_body:
+                send_error(client_sock, 413, f"Request body too large ({content_length} bytes, max {max_body})")
+                return
 
             body = request_data[body_offset:]
             while len(body) < content_length:
