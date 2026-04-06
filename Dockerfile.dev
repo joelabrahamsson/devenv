@@ -29,13 +29,6 @@ RUN useradd -m -s /usr/bin/fish dev
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs
 
-# Bun (required by Compound Engineering plugin tooling)
-# Installed to /usr/local/bin so all users can access it
-RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/bun && \
-    chmod 755 /usr/local/bin/bun && \
-    ln -s /usr/local/bin/bun /usr/local/bin/bunx
-
 # GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
@@ -44,8 +37,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     > /etc/apt/sources.list.d/github-cli.list && \
     apt-get update && apt-get install -y gh
 
-# Claude Code + Compound Engineering plugin CLI + GitHub Copilot CLI
-RUN npm install -g @anthropic-ai/claude-code @every-env/compound-plugin @github/copilot
+# Claude Code + GitHub Copilot CLI
+RUN npm install -g @anthropic-ai/claude-code @github/copilot
 
 # Docker Compose — installed as docker-compose-real.
 # The allowlist wrapper (mounted from Mac at /etc/docker-allowlist) is
@@ -83,18 +76,7 @@ USER dev
 # Shell alias: superclaude → claude --dangerously-skip-permissions
 RUN fish -c "alias superclaude 'claude --dangerously-skip-permissions'; funcsave superclaude"
 
-# Install Compound Engineering plugin into ~/.claude/
-# Cloned directly from GitHub — the plugin CLI has no native Claude Code target,
-# so we copy files from the known repo structure instead.
-RUN git clone --depth 1 https://github.com/EveryInc/compound-engineering-plugin /tmp/ce-plugin && \
-    mkdir -p /home/dev/.claude/commands /home/dev/.claude/agents /home/dev/.claude/skills && \
-    cp -r /tmp/ce-plugin/.claude/commands/. /home/dev/.claude/commands/ && \
-    cp -r /tmp/ce-plugin/plugins/compound-engineering/agents/. /home/dev/.claude/agents/ && \
-    cp -r /tmp/ce-plugin/plugins/compound-engineering/skills/. /home/dev/.claude/skills/ && \
-    rm -rf /tmp/ce-plugin
-
-# Global Claude Code configuration (CLAUDE.md, skills, etc.)
-# Copied after the CE plugin so our files take precedence on overlap.
+# Claude Code configuration (CLAUDE.md, skills, agents, keybindings, settings)
 COPY --chown=dev:dev claude-config/ /home/dev/.claude/
 
 # nvm.fish — fish-native Node version manager for per-project switching.

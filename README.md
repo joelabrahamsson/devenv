@@ -26,20 +26,9 @@ Rather than using a single GitHub credential with broad access, each project get
 
 Consistency with the Mac development environment. Using the same shell everywhere reduces cognitive overhead and means muscle memory transfers.
 
-### Compound Engineering Plugin
-
-Claude Code is configured with the [Compound Engineering Plugin](https://github.com/EveryInc/compound-engineering-plugin) by Every.to. This provides a set of specialized agents and workflow commands that implement the Plan → Work → Review → Compound loop:
-
-- `/ce:plan` — spawns parallel research agents to build an implementation plan
-- `/ce:work` — executes the plan with progress tracking
-- `/ce:review` — spawns 14 specialized review agents in parallel (security, performance, architecture, etc.)
-- `/ce:compound` — documents learnings for future sessions
-
-The plugin is pre-installed in the container image so it's available without any manual setup.
-
 ### Bundled Skills and Agents
 
-In addition to the CE plugin, the environment includes custom skills and agents (in `claude-config/`) for a plan → implement → finalize workflow. Each skill can be used independently or as a pipeline. Reviews always run in parallel using both a Claude agent and GitHub Copilot CLI.
+The environment includes custom skills and agents (in `claude-config/`) for a plan → implement → finalize workflow. Each skill can be used independently or as a pipeline. Reviews always run in parallel using both a Claude agent and GitHub Copilot CLI.
 
 **`/plan-review [description]`** — Planning phase
 1. Enters plan mode and creates a detailed TDD-structured plan
@@ -144,9 +133,7 @@ The image includes:
 - GitHub CLI (`gh`)
 - GitHub Copilot CLI (standalone, via npm)
 - Claude Code
-- Compound Engineering Plugin (pre-installed into `~/.claude/`)
 - Docker Compose (with image allowlist wrapper)
-- Bun (required by Compound Engineering tooling)
 - Playwright system dependencies (run `npx playwright install chromium` for browsers)
 
 ---
@@ -210,12 +197,6 @@ copilot explain "git rebase -i HEAD~3"
 
 # Ask Claude to consult GPT for a second opinion (uses Copilot CLI)
 # Just say "consult with gpt" or "ask gpt to review this"
-
-# Typical compound engineering session
-# /ce:plan Add user notifications
-# /ce:work
-# /ce:review
-# /ce:compound
 ```
 
 ---
