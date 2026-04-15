@@ -14,15 +14,15 @@ Allowed:
   - Exec: create (inspected — blocks privileged), start, inspect, resize
   - Images: list, inspect, history, tag
   - Image pull: only images on the allowlist
-  - Image build: allowed (FROM validation is done by compose wrapper)
   - Networks: all operations (create, list, inspect, connect, disconnect, remove)
-  - Volumes: all operations (create, list, inspect, remove, prune)
+  - Volumes: create (inspected), list, inspect, remove, prune
   - System: info, version, ping, events, df
 
 Blocked:
   - Container creation with: bind mounts, privileged, host namespaces,
-    capabilities, devices, sysctls, VolumesFrom
+    capabilities, devices, sysctls, VolumesFrom, custom volume drivers
   - Exec creation with: privileged
+  - Volume creation with: non-default drivers, driver options
   - Image pull of non-allowlisted images
   - Any endpoint not in the allowlist
 """
@@ -41,6 +41,8 @@ REAL_SOCKET = os.environ.get("DOCKER_SOCKET_REAL", "/var/run/docker-real.sock")
 PROXY_SOCKET = os.environ.get("DOCKER_SOCKET_PROXY", "/var/run/docker.sock")
 ALLOWLIST_FILE = "/etc/docker-allowlist/allowed-images.txt"
 BUFFER_SIZE = 65536
+MAX_HEADER_SIZE = 64 * 1024
+MAX_BODY_SIZE = 10 * 1024 * 1024
 
 # Compile allowed API patterns (method, path_regex)
 ALLOWED_ENDPOINTS = [
@@ -79,7 +81,7 @@ ALLOWED_ENDPOINTS = [
     ("POST", r"/exec/[^/]+/resize"),
     ("GET", r"/exec/[^/]+/json"),
 
-    # Images — read operations + build (FROM checked by compose wrapper)
+    # Images — read operations; build is blocked at the API level
     ("GET", r"/images/json"),
     ("GET", r"/images/[^/]+/json"),
     ("GET", r"/images/[^/]+/history"),
@@ -119,6 +121,11 @@ def load_allowlist():
     return allowed
 
 
+def strip_version_prefix(path):
+    """Strip the Docker API version prefix and query string from a path."""
+    return re.sub(r"^/v\d+\.\d+", "", path.split("?")[0])
+
+
 def normalize_image_name(image_base):
     """Normalize a fully qualified Docker image name to its short form.
 
@@ -139,8 +146,7 @@ def normalize_image_name(image_base):
 
 def is_endpoint_allowed(method, path):
     """Check if a method+path combination is in the allowlist."""
-    # Strip version prefix (e.g., /v1.41/containers/json -> /containers/json)
-    path_base = re.sub(r"^/v\d+\.\d+", "", path.split("?")[0])
+    path_base = strip_version_prefix(path)
     for allowed_method, pattern in ALLOWED_ENDPOINTS:
         if method == allowed_method and re.match(pattern + "$", path_base):
             return True
@@ -149,13 +155,15 @@ def is_endpoint_allowed(method, path):
 
 def needs_body_inspection(method, path):
     """Check if this request needs body inspection."""
-    path_base = re.sub(r"^/v\d+\.\d+", "", path.split("?")[0])
+    path_base = strip_version_prefix(path)
     if method == "POST" and re.match(r"/containers/create$", path_base):
         return "container_create"
     if method == "POST" and re.match(r"/containers/[^/]+/exec$", path_base):
         return "exec_create"
     if method == "POST" and re.match(r"/images/create$", path_base):
         return "image_pull"
+    if method == "POST" and re.match(r"/volumes/create$", path_base):
+        return "volume_create"
     return None
 
 
@@ -188,6 +196,8 @@ def check_container_create(body_bytes):
         return False, f"Setting sysctls is not allowed: {host_config['Sysctls']}"
     if host_config.get("VolumesFrom"):
         return False, f"VolumesFrom is not allowed: {host_config['VolumesFrom']}"
+    if host_config.get("VolumeDriver"):
+        return False, f"Custom volume drivers are not allowed: {host_config['VolumeDriver']}"
 
     binds = host_config.get("Binds", [])
     if binds:
@@ -196,8 +206,18 @@ def check_container_create(body_bytes):
     mounts = host_config.get("Mounts", [])
     if isinstance(mounts, list):
         for mount in mounts:
-            if isinstance(mount, dict) and mount.get("Type", "").lower() == "bind":
+            if not isinstance(mount, dict):
+                continue
+            mount_type = mount.get("Type", "").lower()
+            if mount_type == "bind":
                 return False, f"Bind mounts are not allowed: {mount.get('Source', '')}"
+            if mount_type == "volume":
+                volume_options = mount.get("VolumeOptions", {})
+                if not isinstance(volume_options, dict):
+                    volume_options = {}
+                driver_config = volume_options.get("DriverConfig", {})
+                if driver_config:
+                    return False, f"Volume driver config is not allowed: {driver_config}"
 
     # Validate image against allowlist — prevents creating containers from
     # cached images that are not (or no longer) on the allowlist.
@@ -221,6 +241,27 @@ def check_exec_create(body_bytes):
 
     if config.get("Privileged"):
         return False, "Privileged exec is not allowed"
+
+    return True, ""
+
+
+def check_volume_create(body_bytes):
+    """Inspect a volume creation request — block driver-based bind mounts."""
+    try:
+        config = json.loads(body_bytes)
+    except (json.JSONDecodeError, ValueError):
+        return False, "Could not parse volume creation request"
+
+    if not isinstance(config, dict):
+        return False, "Could not parse volume creation request"
+
+    driver = str(config.get("Driver", "")).strip().lower()
+    if driver and driver != "local":
+        return False, f"Custom volume drivers are not allowed: {config.get('Driver')}"
+
+    driver_opts = config.get("DriverOpts", {})
+    if driver_opts:
+        return False, f"Volume driver options are not allowed: {driver_opts}"
 
     return True, ""
 
@@ -276,7 +317,7 @@ def parse_http_request(data):
     if header_end == -1:
         return None, None, {}, len(data)
 
-    header_data = data[:header_end].decode("utf-8", errors="replace")
+    header_data = data[:header_end].decode("iso-8859-1", errors="replace")
     lines = header_data.split("\r\n")
     request_line = lines[0]
     parts = request_line.split(" ")
@@ -290,6 +331,30 @@ def parse_http_request(data):
             headers[k.lower()] = v
 
     return method, path, headers, header_end + 4
+
+
+def parse_http_response(data):
+    """Parse an HTTP response, return (status_code, headers, body_start_offset)."""
+    header_end = data.find(b"\r\n\r\n")
+    if header_end == -1:
+        return None, {}, len(data)
+
+    header_data = data[:header_end].decode("iso-8859-1", errors="replace")
+    lines = header_data.split("\r\n")
+    status_line = lines[0]
+    parts = status_line.split(" ", 2)
+    try:
+        status_code = int(parts[1]) if len(parts) >= 2 else None
+    except ValueError:
+        status_code = None
+
+    headers = {}
+    for line in lines[1:]:
+        if ": " in line:
+            k, v = line.split(": ", 1)
+            headers[k.lower()] = v
+
+    return status_code, headers, header_end + 4
 
 
 def send_error(client_sock, status, message):
@@ -306,6 +371,105 @@ def send_error(client_sock, status, message):
         client_sock.sendall(response)
     except OSError:
         pass
+
+
+def read_http_request(client_sock):
+    """Read exactly one HTTP request from the client socket."""
+    request_data = b""
+    while b"\r\n\r\n" not in request_data:
+        chunk = client_sock.recv(BUFFER_SIZE)
+        if not chunk:
+            raise ValueError("Could not read request headers")
+        request_data += chunk
+        if b"\r\n\r\n" not in request_data and len(request_data) > MAX_HEADER_SIZE:
+            raise ValueError("Request headers too large")
+
+    method, path, headers, body_offset = parse_http_request(request_data)
+    if method is None:
+        raise ValueError("Could not parse request")
+
+    transfer_encoding = headers.get("transfer-encoding", "").strip().lower()
+    if transfer_encoding and transfer_encoding != "identity":
+        raise ValueError("Transfer-Encoding is not supported")
+
+    content_length_raw = headers.get("content-length", "0").strip()
+    try:
+        content_length = int(content_length_raw) if content_length_raw else 0
+    except ValueError as exc:
+        raise ValueError("Invalid Content-Length") from exc
+    if content_length < 0:
+        raise ValueError("Invalid Content-Length")
+    if content_length > MAX_BODY_SIZE:
+        raise ValueError(f"Request body too large ({content_length} bytes, max {MAX_BODY_SIZE})")
+
+    body = request_data[body_offset:]
+    if len(body) > content_length:
+        raise ValueError("Pipelined requests are not allowed")
+    while len(body) < content_length:
+        chunk = client_sock.recv(BUFFER_SIZE)
+        if not chunk:
+            raise ValueError("Incomplete request body")
+        body += chunk
+        if len(body) > content_length:
+            raise ValueError("Pipelined requests are not allowed")
+
+    request_bytes = request_data[:body_offset] + body
+    return method, path, headers, body, body_offset, request_bytes
+
+
+def read_http_response_headers(sock):
+    """Read an HTTP response up to the end of its headers."""
+    response_data = b""
+    while b"\r\n\r\n" not in response_data:
+        chunk = sock.recv(BUFFER_SIZE)
+        if not chunk:
+            raise ValueError("Could not read upstream response headers")
+        response_data += chunk
+        if b"\r\n\r\n" not in response_data and len(response_data) > MAX_HEADER_SIZE:
+            raise ValueError("Upstream response headers too large")
+
+    status_code, headers, body_offset = parse_http_response(response_data)
+    if status_code is None:
+        raise ValueError("Could not parse upstream response")
+
+    return status_code, headers, body_offset, response_data
+
+
+def rewrite_connection_close(request_bytes, body_offset):
+    """Force Connection: close on non-hijacked requests."""
+    header_data = request_bytes[:body_offset - 4].decode("iso-8859-1", errors="replace")
+    body = request_bytes[body_offset:]
+    lines = header_data.split("\r\n")
+    rewritten = [lines[0]]
+    for line in lines[1:]:
+        lower = line.lower()
+        if lower.startswith("connection:") or lower.startswith("proxy-connection:"):
+            continue
+        rewritten.append(line)
+    rewritten.append("Connection: close")
+    return "\r\n".join(rewritten).encode("iso-8859-1") + b"\r\n\r\n" + body
+
+
+def request_can_hijack(method, path):
+    """Return True when a validated request may switch protocols to a raw stream."""
+    path_base = strip_version_prefix(path)
+    return method == "POST" and (
+        re.match(r"/containers/[^/]+/attach$", path_base)
+        or re.match(r"/exec/[^/]+/start$", path_base)
+    )
+
+
+def response_is_hijacked(status_code, headers):
+    """Return True when the daemon upgraded the connection to a raw stream."""
+    connection = headers.get("connection", "").lower()
+    upgrade = headers.get("upgrade", "").strip()
+    content_type = headers.get("content-type", "").lower()
+    return (
+        status_code == 101
+        or "upgrade" in connection
+        or bool(upgrade)
+        or "application/vnd.docker.raw-stream" in content_type
+    )
 
 
 def stream_bidirectional(sock_a, sock_b):
@@ -326,19 +490,39 @@ def stream_bidirectional(sock_a, sock_b):
         pass
 
 
+def relay_response_only(client_sock, real_sock, initial_data=b""):
+    """Relay only the daemon response; reject client data after the request."""
+    if initial_data:
+        client_sock.sendall(initial_data)
+
+    sockets = [client_sock, real_sock]
+    try:
+        while sockets:
+            readable, _, errored = select.select(sockets, [], sockets, 30)
+            if errored:
+                break
+            for s in readable:
+                data = s.recv(BUFFER_SIZE)
+                if not data:
+                    return
+                if s is real_sock:
+                    client_sock.sendall(data)
+                else:
+                    # The request has already been validated and forwarded.
+                    # Any additional client data would be a new request on the
+                    # same connection, which we reject to avoid tunneling.
+                    return
+    except OSError:
+        pass
+
+
 def handle_client(client_sock):
     """Handle a single client connection."""
     try:
-        request_data = b""
-        while b"\r\n\r\n" not in request_data:
-            chunk = client_sock.recv(BUFFER_SIZE)
-            if not chunk:
-                return
-            request_data += chunk
-
-        method, path, headers, body_offset = parse_http_request(request_data)
-        if method is None:
-            send_error(client_sock, 400, "Could not parse request")
+        try:
+            method, path, headers, body, body_offset, request_data = read_http_request(client_sock)
+        except ValueError as exc:
+            send_error(client_sock, 400, str(exc))
             return
 
         # Check if the endpoint is allowed
@@ -358,54 +542,47 @@ def handle_client(client_sock):
                 print(f"BLOCKED: {reason}", file=sys.stderr)
                 return
 
-        elif inspection_type in ("container_create", "exec_create"):
-            # Read the full body for inspection
-            content_length = int(headers.get("content-length", 0))
-            if content_length == 0:
+        elif inspection_type in ("container_create", "exec_create", "volume_create"):
+            if len(body) == 0:
                 send_error(client_sock, 400, "Missing Content-Length on inspected request")
                 return
-            # Cap body size to prevent OOM via crafted Content-Length.
-            # 10 MB is generous for any container/exec creation payload.
-            max_body = 10 * 1024 * 1024
-            if content_length > max_body:
-                send_error(client_sock, 413, f"Request body too large ({content_length} bytes, max {max_body})")
-                return
-
-            body = request_data[body_offset:]
-            while len(body) < content_length:
-                chunk = client_sock.recv(BUFFER_SIZE)
-                if not chunk:
-                    break
-                body += chunk
-
-            # Validate body length matches Content-Length to prevent truncation attacks
-            if len(body) < content_length:
-                send_error(client_sock, 400, "Incomplete request body")
-                return
-
-            # Truncate to exactly Content-Length to prevent appended data
-            body = body[:content_length]
 
             if inspection_type == "container_create":
                 allowed, reason = check_container_create(body)
-            else:
+            elif inspection_type == "exec_create":
                 allowed, reason = check_exec_create(body)
+            else:
+                allowed, reason = check_volume_create(body)
 
             if not allowed:
                 send_error(client_sock, 403, f"Blocked by socket proxy: {reason}")
                 print(f"BLOCKED: {reason}", file=sys.stderr)
                 return
 
-            # Rebuild request_data with exactly the validated body
-            request_data = request_data[:body_offset] + body
-
         # Connect to the real socket and forward
         real_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         real_sock.connect(REAL_SOCKET)
 
+        allow_hijack = request_can_hijack(method, path)
+        if not allow_hijack:
+            request_data = rewrite_connection_close(request_data, body_offset)
+
         real_sock.sendall(request_data)
 
-        stream_bidirectional(client_sock, real_sock)
+        if allow_hijack:
+            try:
+                status_code, response_headers, _, response_data = read_http_response_headers(real_sock)
+            except ValueError as exc:
+                send_error(client_sock, 502, f"Proxy error: {str(exc)}")
+                return
+
+            client_sock.sendall(response_data)
+            if response_is_hijacked(status_code, response_headers):
+                stream_bidirectional(client_sock, real_sock)
+            else:
+                relay_response_only(client_sock, real_sock)
+        else:
+            relay_response_only(client_sock, real_sock)
 
         real_sock.close()
     except Exception as e:
