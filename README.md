@@ -2,7 +2,7 @@
 
 A sandboxed development environment for macOS that lets AI coding agents run with full autonomy inside isolated Podman containers. Each project gets its own container with fish shell, Node.js, Python, Claude Code, and Docker Compose — with no access to your Mac's credentials, SSH keys, or files outside the project directory.
 
-The primary use case is running Claude Code with `--dangerously-skip-permissions` (aliased as `superclaude`), which disables permission prompts and enables uninterrupted agent execution. The sandbox ensures that if an agent runs something destructive, it only affects the container.
+The primary use case is running AI coding agents with full autonomy — Claude Code with `--dangerously-skip-permissions` (aliased as `superclaude`) and OpenAI Codex CLI with `approval_policy = "never"` baked into the default config. Both skip permission prompts for uninterrupted agent execution. The sandbox ensures that if an agent runs something destructive, it only affects the container.
 
 ---
 
@@ -134,6 +134,7 @@ Auth state survives container rebuilds:
 - **GitHub token** — per-project, at `~/.config/devenv/tokens/<project>`. Worktrees share the parent's token.
 - **Claude Code** — shared across projects, at `~/.config/devenv/claude-state/`. Login once with `claude /login`.
 - **Copilot CLI** — shared across projects, at `~/.config/devenv/copilot-state/`. Login once with `copilot -i` then `/login`.
+- **Codex CLI** — shared across projects, at `~/.config/devenv/codex-state/`. Login once with `codex login` (or `codex login --device-auth` for headless).
 
 ---
 
@@ -147,7 +148,7 @@ For Shift+Enter in iTerm2: Preferences → Profiles → Keys → Key Mappings �
 
 ## Container Image
 
-The image includes: fish shell, Node.js LTS, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, GitHub Copilot CLI, Claude Code, Docker Compose, and Playwright system dependencies.
+The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, GitHub Copilot CLI, Claude Code, OpenAI Codex CLI (with `approval_policy = "never"`), Docker Compose, and Playwright system dependencies. The Codex MCP server is pre-configured in Claude Code so Claude can delegate to Codex for cross-model code review.
 
 ---
 

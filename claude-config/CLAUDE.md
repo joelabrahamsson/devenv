@@ -30,6 +30,14 @@ This container has system dependencies pre-installed, but user-space tools (like
 
 You have write access to your home directory and node_modules — most installs work without root.
 
+## Git Worktrees
+
+You can create git worktrees inside this container (e.g., `git worktree add /home/dev/wt-branch feature-branch`). Temporary worktrees for parallel agent tasks work fine.
+
+However, worktrees created inside the container are **ephemeral** — they live on the container filesystem and are lost if the container is removed or rebuilt. Only `/workspace` is persisted to the host.
+
+For long-lived parallel branch work, ask the user to run `dev-worktree <project> <branch>` on the Mac side instead. That creates a separate container with its own isolation.
+
 ## Container Resources
 
 This container has 8 GB of memory and 4 CPUs. Do not artificially limit processes with flags like `--max-old-space-size=512`. Run builds, tests, and tools with their default memory settings — the container has plenty of headroom.

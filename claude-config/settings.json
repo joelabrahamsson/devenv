@@ -3,5 +3,12 @@
   "attribution": {
     "commit": "",
     "pr": ""
+  },
+  "mcpServers": {
+    "codex": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "codex-mcp-server"]
+    }
   }
 }

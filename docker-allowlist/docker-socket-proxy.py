@@ -119,6 +119,24 @@ def load_allowlist():
     return allowed
 
 
+def normalize_image_name(image_base):
+    """Normalize a fully qualified Docker image name to its short form.
+
+    Docker resolves short names to fully qualified registry paths:
+      redis          -> docker.io/library/redis
+      minio/minio    -> docker.io/minio/minio
+
+    The allowlist uses short names, so we strip the registry prefix
+    to match against it. Only docker.io is normalized — other registries
+    must be listed explicitly in the allowlist.
+    """
+    if image_base.startswith("docker.io/library/"):
+        return image_base[len("docker.io/library/"):]
+    if image_base.startswith("docker.io/"):
+        return image_base[len("docker.io/"):]
+    return image_base
+
+
 def is_endpoint_allowed(method, path):
     """Check if a method+path combination is in the allowlist."""
     # Strip version prefix (e.g., /v1.41/containers/json -> /containers/json)
@@ -186,9 +204,10 @@ def check_container_create(body_bytes):
     image = config.get("Image", "")
     if image:
         image_base = image.split(":")[0]
+        normalized = normalize_image_name(image_base)
         allowed_images = load_allowlist()
-        if image_base not in allowed_images:
-            return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
+        if normalized not in allowed_images:
+            return False, f"Image not allowed: {image}. Add '{normalized}' to allowed-images.txt"
 
     return True, ""
 
@@ -219,8 +238,9 @@ def check_image_pull(path):
     allowed_images = load_allowlist()
     for image in matches:
         image_base = image.split(":")[0]
-        if image_base not in allowed_images:
-            return False, f"Image not allowed: {image}. Add '{image_base}' to allowed-images.txt"
+        normalized = normalize_image_name(image_base)
+        if normalized not in allowed_images:
+            return False, f"Image not allowed: {image}. Add '{normalized}' to allowed-images.txt"
 
     return True, ""
 

@@ -51,6 +51,11 @@ function dev
             echo "Removing node_modules volume '$node_modules_volume'..."
             podman volume rm $node_modules_volume
         end
+        # Remove workspace node_modules volumes (pnpm workspaces)
+        for vol in (podman volume ls --format '{{.Name}}' | grep "^$project-nm-")
+            echo "Removing workspace node_modules volume '$vol'..."
+            podman volume rm $vol
+        end
     end
 
     # Resolve the devenv repo directory (parent of fish/)
@@ -139,9 +144,33 @@ function dev
         # that block socket and volume access without it.
         # Isolate node_modules so Linux and Mac binaries don't conflict.
         # The project directory is shared, but node_modules gets its own volume.
+        # For pnpm workspaces, each package's node_modules also gets a volume.
         set node_modules_volume "$project-node-modules"
         if not podman volume exists $node_modules_volume
             podman volume create $node_modules_volume
+        end
+
+        set workspace_nm_args
+        set project_dir ~/projects/$project
+        if test -f $project_dir/pnpm-workspace.yaml
+            # Find workspace package directories by resolving globs from pnpm-workspace.yaml.
+            # Each package's node_modules gets its own volume to isolate Linux/Mac binaries.
+            # Extract glob patterns (lines like "  - 'packages/*'") and resolve them.
+            for line in (string match -r '^\s*-\s+.+' < $project_dir/pnpm-workspace.yaml)
+                set pattern (string replace -r '^\s*-\s*' '' $line | string trim | string trim -c "'" | string trim -c '"')
+                test -z "$pattern"; and continue
+                set parent_dir (dirname $pattern)
+                for pkg_dir in (find $project_dir/$parent_dir -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+                    set rel_path (string replace "$project_dir/" "" $pkg_dir)
+                    # Volume name: project-nm-<flattened-relative-path>
+                    set vol_name "$project-nm-"(string replace -a '/' '-' $rel_path)
+                    if not podman volume exists $vol_name
+                        podman volume create $vol_name
+                    end
+                    set workspace_nm_args $workspace_nm_args \
+                        -v $vol_name:/workspace/$rel_path/node_modules
+                end
+            end
         end
 
         set create_args -it \
@@ -149,6 +178,7 @@ function dev
             --network $dind_network \
             -v ~/projects/$project:/workspace \
             -v $node_modules_volume:/workspace/node_modules \
+            $workspace_nm_args \
             -v $devenv_dir/docker-allowlist:/etc/docker-allowlist:ro \
             -v $dind_volume:/var/run/docker-dind \
             --security-opt label=disable \
@@ -206,6 +236,12 @@ function dev
         set copilot_state_dir ~/.config/devenv/copilot-state
         mkdir -p $copilot_state_dir
         set create_args $create_args -v $copilot_state_dir:/home/dev/.copilot
+
+        # Persist Codex CLI auth state across container rebuilds.
+        # Shared across all projects — auth is tied to the user's account.
+        set codex_state_dir ~/.config/devenv/codex-state
+        mkdir -p $codex_state_dir
+        set create_args $create_args -v $codex_state_dir:/home/dev/.codex
 
         if not podman create $create_args devenv fish
             echo "ERROR: Failed to create container."
@@ -457,6 +493,10 @@ function dev-worktree-rm
         podman volume rm "$worktree_name-node-modules"
         echo "✓ Removed node_modules volume"
     end
+    for vol in (podman volume ls --format '{{.Name}}' | grep "^$worktree_name-nm-")
+        podman volume rm $vol
+        echo "✓ Removed workspace node_modules volume '$vol'"
+    end
 
     # Remove token symlink
     rm -f ~/.config/devenv/tokens/$worktree_name
@@ -496,6 +536,10 @@ function dev-rm
     if podman volume exists $node_modules_volume
         podman volume rm $node_modules_volume
         echo "✓ Removed node_modules volume"
+    end
+    for vol in (podman volume ls --format '{{.Name}}' | grep "^$project-nm-")
+        podman volume rm $vol
+        echo "✓ Removed workspace node_modules volume '$vol'"
     end
     if podman network exists $dind_network
         podman network rm $dind_network

@@ -24,6 +24,7 @@ opensearch
 mailhog
 mailpit
 minio
+minio/minio
 localstack
 byparr
 python

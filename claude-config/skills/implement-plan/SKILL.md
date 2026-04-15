@@ -97,9 +97,9 @@ The prompt should ask copilot to structure its response as: Critical Issues, Sug
 
 Run copilot:
 ```
-copilot -p "$(cat /tmp/copilot-code-review-prompt.txt)" \
+cd /workspace && copilot -p "$(cat /tmp/copilot-code-review-prompt.txt)" \
   --model gpt-5.4 \
-  --available-tools='view,glob,grep' \
+  --available-tools='view,glob,rg' \
   --no-ask-user
 ```
 

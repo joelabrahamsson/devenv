@@ -119,7 +119,7 @@ Run the copilot CLI in non-interactive mode using Bash.
 - The paths to CLAUDE.md and AGENTS.md (if they exist) — instruct copilot to read them using its `view` tool
 - Review instructions (see below)
 
-Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — copilot has `view`, `glob`, and `grep` tools and should read files directly. This keeps the prompt small.
+Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — copilot has `view`, `glob`, and `rg` tools and should read files directly. This keeps the prompt small.
 
 The prompt must instruct copilot to perform a thorough review covering:
 - Whether the plan follows conventions in CLAUDE.md and AGENTS.md
@@ -134,14 +134,14 @@ The prompt should ask copilot to structure its response as: Critical Issues, Sug
 
 **Running copilot:** Use the following command pattern:
 ```
-copilot -p "$(cat /tmp/copilot-plan-review-prompt.txt)" \
+cd /workspace && copilot -p "$(cat /tmp/copilot-plan-review-prompt.txt)" \
   --model gpt-5.4 \
-  --available-tools='view,glob,grep' \
+  --available-tools='view,glob,rg' \
   --no-ask-user
 ```
 
 Notes:
-- `--available-tools='view,glob,grep'` restricts copilot to read-only tools, keeping the review focused and faster
+- `--available-tools='view,glob,rg'` restricts copilot to read-only tools, keeping the review focused and faster
 - `--no-ask-user` ensures copilot works autonomously without trying to ask questions
 - Run the copilot command in the background using `run_in_background: true` with a Bash timeout of 900000ms (15 minutes)
 - Since copilot runs in the background, you will be notified when it completes. If the adversarial agent review finishes first and copilot is still running, inform the user that the Claude review is done and copilot is still working. If copilot has been running for more than 5 minutes when the agent review finishes, let the user know it's taking longer than expected but is still in progress.
