@@ -43,10 +43,10 @@ For long-lived parallel branch work, ask the user to run `dev-worktree <project>
 This container runs inside a sandboxed environment with a dedicated Docker-in-Docker (DinD) daemon. A filtering proxy controls what Docker operations are allowed.
 
 **What works:**
-- `docker compose up -d`, `docker compose down`, `docker compose ps`, `docker compose logs`, `docker compose exec`, `docker compose run`, `docker compose pull`
-- All standard `docker compose` subcommands
+- `docker compose up`, `docker compose down`, `docker compose ps`, `docker compose logs`, `docker compose exec`, `docker compose run`, `docker compose pull`
 
 **What does NOT work:**
+- `docker compose build` — blocked by the proxy; use pre-built images only
 - `docker exec`, `docker run`, `docker build`, `docker images`, `docker ps`, or any direct `docker` command — only `docker compose` is available
 - Bind-mounting host paths into compose services
 - Pulling images not on the allowlist

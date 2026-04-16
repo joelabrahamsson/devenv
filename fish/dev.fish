@@ -240,8 +240,10 @@ function dev
 
         # Persist Codex CLI auth state across container rebuilds.
         # Shared across all projects — auth is tied to the user's account.
+        # Seed config files from the repo so they survive the bind mount.
         set codex_state_dir ~/.config/devenv/codex-state
         mkdir -p $codex_state_dir
+        cp -n $devenv_dir/codex-config/* $codex_state_dir/ 2>/dev/null
         set create_args $create_args -v $codex_state_dir:/home/dev/.codex
 
         if not podman create $create_args devenv fish
