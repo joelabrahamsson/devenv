@@ -35,6 +35,7 @@ import socket
 import sys
 import threading
 import time
+from urllib.parse import unquote
 
 
 REAL_SOCKET = os.environ.get("DOCKER_SOCKET_REAL", "/var/run/docker-real.sock")
@@ -83,9 +84,9 @@ ALLOWED_ENDPOINTS = [
 
     # Images — read operations; build is blocked at the API level
     ("GET", r"/images/json"),
-    ("GET", r"/images/[^/]+/json"),
-    ("GET", r"/images/[^/]+/history"),
-    ("POST", r"/images/[^/]+/tag"),
+    ("GET", r"/images/.+/json"),
+    ("GET", r"/images/.+/history"),
+    ("POST", r"/images/.+/tag"),
     # /build is NOT allowed — agents could bypass the compose wrapper's FROM
     # validation by calling the build API directly. Builds must go through
     # docker-compose, which validates FROM directives before invoking compose-real.
@@ -201,7 +202,12 @@ def check_container_create(body_bytes):
 
     binds = host_config.get("Binds", [])
     if binds:
-        return False, f"Bind mounts are not allowed: {binds}"
+        for bind in binds:
+            # Named volumes: "volname:/path:opts" — source has no slash.
+            # Bind mounts: "/host/path:/path:opts" — source starts with /.
+            source = bind.split(":")[0] if isinstance(bind, str) else ""
+            if source.startswith("/"):
+                return False, f"Bind mounts are not allowed: {bind}"
 
     mounts = host_config.get("Mounts", [])
     if isinstance(mounts, list):
@@ -278,10 +284,11 @@ def check_image_pull(path):
 
     allowed_images = load_allowlist()
     for image in matches:
-        image_base = image.split(":")[0]
+        image_decoded = unquote(image)
+        image_base = image_decoded.split(":")[0]
         normalized = normalize_image_name(image_base)
         if normalized not in allowed_images:
-            return False, f"Image not allowed: {image}. Add '{normalized}' to allowed-images.txt"
+            return False, f"Image not allowed: {image_decoded}. Add '{normalized}' to allowed-images.txt"
 
     return True, ""
 

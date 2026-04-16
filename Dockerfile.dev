@@ -85,8 +85,9 @@ RUN fish -c "alias superclaude 'claude --dangerously-skip-permissions'; funcsave
 # Claude Code configuration (CLAUDE.md, skills, agents, keybindings, settings)
 COPY --chown=dev:dev claude-config/ /home/dev/.claude/
 
-# Codex CLI default config — skip approval prompts for full autonomy
-RUN mkdir -p /home/dev/.codex && printf '%s\n' \
+# Codex CLI configuration (AGENTS.md, config.toml)
+COPY --chown=dev:dev codex-config/ /home/dev/.codex/
+RUN printf '%s\n' \
     'approval_policy = "never"' \
     > /home/dev/.codex/config.toml
 
