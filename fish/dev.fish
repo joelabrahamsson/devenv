@@ -339,8 +339,10 @@ function dev
             mkdir -p /home/dev/.safe-hooks
             chown dev:dev /home/dev/.safe-hooks
             if [ -d /workspace/.git/hooks ]; then
-                rm -rf /workspace/.git/hooks
-                ln -s /dev/null /workspace/.git/hooks
+                # Best-effort: rootless Podman UID mapping may prevent modifying
+                # bind-mounted files. The primary defense is core.hooksPath below.
+                rm -rf /workspace/.git/hooks 2>/dev/null
+                ln -s /dev/null /workspace/.git/hooks 2>/dev/null || true
             fi
         "
         podman exec $project git config --global core.hooksPath /home/dev/.safe-hooks

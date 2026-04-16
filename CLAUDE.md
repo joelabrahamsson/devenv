@@ -50,7 +50,7 @@ Edit `Dockerfile.dev`, add the install step in the appropriate place (before `US
 Add the image name prefix to `docker-allowlist/allowed-images.txt`. No rebuild needed — recreate the container with `podman rm -f <project> && dev <project>`.
 
 **Upgrade Claude Code:**
-Claude Code is installed via npm in the Dockerfile. Rebuild the image to get the latest version.
+Claude Code is installed via the native installer in the Dockerfile. It auto-updates, but rebuild the image to get a fresh install.
 
 **Reset a project container:**
 ```bash

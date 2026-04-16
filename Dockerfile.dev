@@ -40,8 +40,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # pnpm + yarn (so projects using any package manager work out of the box)
 RUN npm install -g pnpm yarn
 
-# Claude Code + GitHub Copilot CLI + OpenAI Codex CLI
-RUN npm install -g @anthropic-ai/claude-code @github/copilot @openai/codex
+# GitHub Copilot CLI + OpenAI Codex CLI
+RUN npm install -g @github/copilot @openai/codex
 
 # Docker Compose — installed as docker-compose-real.
 # The allowlist wrapper (mounted from Mac at /etc/docker-allowlist) is
@@ -76,6 +76,9 @@ RUN chmod 755 /usr/local/bin/docker
 # Switch to non-root user for all remaining setup
 USER dev
 
+# Claude Code — native installer (installs to ~/.local/bin/)
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
 # Shell alias: superclaude → claude --dangerously-skip-permissions
 RUN fish -c "alias superclaude 'claude --dangerously-skip-permissions'; funcsave superclaude"
 
@@ -104,6 +107,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Fish shell config
 RUN mkdir -p /home/dev/.config/fish && printf '%s\n' \
+    'fish_add_path $PYENV_ROOT/bin' \
     'pyenv init - fish | source' \
     'fish_add_path /home/dev/.local/bin' \
     'alias g git' \
