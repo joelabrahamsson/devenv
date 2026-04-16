@@ -2,16 +2,6 @@
 
 These instructions apply to all projects inside the dev container.
 
-## Consulting GPT via Copilot CLI
-
-GitHub Copilot CLI is available in this container. When the user asks you to "consult with gpt", "ask gpt", "get a second opinion", or similar, use Copilot CLI to query GPT:
-
-```bash
-copilot -p "your prompt here" --allow-all
-```
-
-Pass relevant context (code snippets, file contents, diffs) directly in the prompt. Use this for code reviews, architecture feedback, debugging ideas, or any situation where a second opinion would be valuable.
-
 ## Bug Fix Workflow
 
 When fixing bugs, follow a TDD red-green workflow by default:
@@ -35,8 +25,6 @@ You have write access to your home directory and node_modules — most installs 
 You can create git worktrees inside this container (e.g., `git worktree add /home/dev/wt-branch feature-branch`). Temporary worktrees for parallel agent tasks work fine.
 
 However, worktrees created inside the container are **ephemeral** — they live on the container filesystem and are lost if the container is removed or rebuilt. Only `/workspace` is persisted to the host.
-
-For long-lived parallel branch work, ask the user to run `dev-worktree <project> <branch>` on the Mac side instead. That creates a separate container with its own isolation.
 
 ## Docker and Test Infrastructure
 

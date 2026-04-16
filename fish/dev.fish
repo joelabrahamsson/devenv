@@ -137,7 +137,8 @@ function dev
                 --security-opt label=disable \
                 -v $dind_volume:/var/run \
                 -e DOCKER_TLS_CERTDIR="" \
-                docker:27-dind
+                docker:27-dind \
+                dockerd --host=unix:///var/run/docker.sock
         end
 
         # label=disable is required on macOS — the Podman VM uses SELinux labels
