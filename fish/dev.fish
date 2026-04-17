@@ -260,17 +260,20 @@ function dev
     # The proxy blocks sandbox escapes (bind mounts, privileged, host namespaces)
     # while allowing normal compose operations through.
     echo -n "Waiting for Docker daemon..."
-    set dind_ready false
-    for i in (seq 1 30)
-        if podman exec $project test -S /var/run/docker-dind/docker.sock 2>/dev/null
-            set dind_ready true
-            echo " ready"
-            break
-        end
-        echo -n "."
-        sleep 1
-    end
-    if test "$dind_ready" = false
+    # Single exec that loops inside the container — avoids the overhead and
+    # intermittent failures of running 60 separate podman exec calls through
+    # the macOS Podman VM.
+    if podman exec --user root $project bash -c '
+        for i in $(seq 1 60); do
+            if test -S /var/run/docker-dind/docker.sock; then
+                exit 0
+            fi
+            sleep 1
+        done
+        exit 1
+    ' 2>/dev/null
+        echo " ready"
+    else
         echo ""
         echo "⚠ Docker daemon did not start — docker-compose may not work"
     end
