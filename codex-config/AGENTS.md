@@ -32,6 +32,7 @@ This container runs inside a sandboxed environment with a dedicated Docker-in-Do
 
 **What works:**
 - `docker compose up`, `docker compose down`, `docker compose ps`, `docker compose logs`, `docker compose exec`, `docker compose run`, `docker compose pull`
+- `localhost:<port>` — compose services that publish ports are reachable at localhost (e.g., postgres at `localhost:5432`)
 
 **What does NOT work:**
 - `docker compose build` — blocked by the proxy; use pre-built images only
