@@ -176,6 +176,7 @@ function dev
 
         set create_args -it \
             --name $project \
+            --init \
             --network container:$dind_name \
             -v ~/projects/$project:/workspace \
             -v $node_modules_volume:/workspace/node_modules \
