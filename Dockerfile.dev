@@ -82,8 +82,18 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 # Shell alias: superclaude → claude --dangerously-skip-permissions
 RUN fish -c "alias superclaude 'claude --dangerously-skip-permissions'; funcsave superclaude"
 
+# Shared workflow docs — referenced by both Claude Code and Codex skills.
+# Placed at ~/workflows/ so they're accessible regardless of which project is mounted.
+COPY --chown=dev:dev docs/workflows/ /home/dev/workflows/
+
 # Claude Code configuration (CLAUDE.md, skills, agents, keybindings, settings)
 COPY --chown=dev:dev claude-config/ /home/dev/.claude/
+
+# Claude Code plugins — installed after config COPY so plugins/ dir isn't overwritten.
+# Git HTTPS rewrite needed because SSH keys aren't available during build.
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" \
+    && claude plugin marketplace add openai/codex-plugin-cc \
+    && claude plugin install codex@openai-codex
 
 # Codex CLI configuration (AGENTS.md, config.toml)
 COPY --chown=dev:dev codex-config/ /home/dev/.codex/

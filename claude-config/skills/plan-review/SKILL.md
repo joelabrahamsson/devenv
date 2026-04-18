@@ -43,52 +43,11 @@ Start by reading the project's CLAUDE.md (and AGENTS.md, ONBOARDING.md if they e
 
 The plan should be detailed enough that someone unfamiliar with the conversation could implement it. Include specific file paths, function names, test descriptions, and implementation details.
 
-### TDD Structure
+### Plan Format and TDD Structure
 
-Every plan step that involves code changes MUST be structured as a red-green-refactor cycle:
+Read `~/workflows/planning/plan-format.md` for the required plan file format, TDD structure, and naming convention. Follow it exactly.
 
-1. **Red**: Write the test(s) first. Describe what test file, test name, and assertions to create.
-2. **Run**: Run the tests and verify they fail for the expected reason.
-3. **Green**: Write the minimum implementation code to make the tests pass.
-4. **Run**: Run the tests and verify they pass.
-5. **Refactor** (if needed): Clean up the implementation while keeping tests green.
-
-For example, instead of:
-```
-Step 3: Add the /api/tags endpoint
-- Create src/routes/api/tags.ts
-- Add GET handler that queries tags table
-- Add route to router
-```
-
-Write:
-```
-Step 3: Add the /api/tags endpoint
-
-3.1 RED - Write test:
-- Create test/routes/api/tags.spec.ts
-- Test: GET /api/tags returns 200 with array of tags
-- Test: GET /api/tags returns empty array when no tags exist
-- Test: Response includes tag id, name, and slug
-
-3.2 RUN - Verify tests fail (routes/handler don't exist yet)
-
-3.3 GREEN - Implement:
-- Create src/routes/api/tags.tsx
-- Add GET handler querying tags table via Kysely
-- Register route in src/routes/index.ts
-
-3.4 RUN - Verify all tests pass
-
-3.5 REFACTOR - (if needed)
-```
-
-The plan file should include a note at the top reminding the implementer to follow the TDD cycle strictly: never write implementation code without a failing test first.
-
-Once the plan is complete, write it to a file at `docs/plans/YYYY-MM-DD-short-description.md` (date + a brief kebab-case summary of what the plan does, e.g., `2026-04-05-add-team-squad-view.md`). Create the `docs/plans/` directory if it doesn't exist. The file should contain:
-- The original goal/task description (including any refinements from user Q&A)
-- A TDD reminder: "## Implementation Approach\nThis plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test."
-- The full implementation plan with TDD-structured steps
+Once the plan is complete, write it to the location and format specified in plan-format.md.
 
 ⚠️ CRITICAL: Do NOT ask the user to review the plan. Do NOT present the plan for approval. You MUST complete Steps 3, 4, and 5 (adversarial reviews, consolidation, and revision) BEFORE presenting anything to the user. Tell the user the plan is written and you're now sending it for adversarial review, then immediately proceed to Step 3.
 
@@ -119,16 +78,7 @@ Run the copilot CLI in non-interactive mode using Bash.
 
 Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — copilot has `view`, `glob`, and `rg` tools and should read files directly. This keeps the prompt small.
 
-The prompt must instruct copilot to perform a thorough review covering:
-- Whether the plan follows conventions in CLAUDE.md and AGENTS.md
-- Whether the plan includes documentation updates where needed
-- Whether the plan uses a test-driven approach with tests covering all planned functionality
-- Whether the plan risks introducing bugs in new or existing code
-- Edge cases, error handling, security considerations
-- Whether the implementation order is logical and dependencies are correct
-- Whether the plan is over-engineered or missing simpler approaches
-
-The prompt should ask copilot to structure its response as: Critical Issues, Suggested Improvements, Minor Observations, and Positive Aspects.
+The prompt must instruct copilot to read `~/workflows/planning/review-criteria.md` for the full review checklist and output format, then perform the review following those criteria exactly.
 
 **Running copilot:** Use the following command pattern:
 ```
@@ -199,11 +149,4 @@ Present the user with clear options:
 
 ### TDD Implementation Rules
 
-When implementing the plan (Options 1 or 4), follow each step's TDD cycle strictly:
-
-1. Write the test(s) described in the RED phase. Do NOT write any implementation code yet.
-2. Run the tests. Confirm they fail. If they pass unexpectedly, investigate — either the test is wrong or the functionality already exists.
-3. Write the implementation code described in the GREEN phase. Write the minimum code needed to pass the tests.
-4. Run the tests. Confirm they pass. If they fail, fix the implementation (not the tests, unless the test itself was wrong).
-5. Refactor if the plan calls for it, running tests again after.
-6. Move to the next step only after all tests for the current step are green.
+When implementing the plan (Options 1 or 4), follow each step's TDD cycle strictly as defined in `~/workflows/planning/plan-format.md`: RED (write tests) → RUN (verify failure) → GREEN (minimal implementation) → RUN (verify pass) → REFACTOR. Never write implementation code without a failing test first. Move to the next step only after all tests for the current step are green.

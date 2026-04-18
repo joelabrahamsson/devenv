@@ -129,6 +129,11 @@ else
     echo "    Git hooks env vars already in $FISH_CONFIG, skipping."
 fi
 
+echo "==> Installing shared workflow docs..."
+mkdir -p "$HOME/workflows"
+cp -r "$SCRIPT_DIR/docs/workflows/"* "$HOME/workflows/"
+echo "    Installed to $HOME/workflows"
+
 echo "==> Installing Claude Code skills and agents..."
 CLAUDE_DIR="$HOME/.claude"
 mkdir -p "$CLAUDE_DIR"
@@ -143,6 +148,19 @@ for f in "$SCRIPT_DIR/claude-config"/*; do
     fi
 done
 echo "    Installed to $CLAUDE_DIR"
+
+echo "==> Installing Claude Code plugins..."
+if command -v claude &>/dev/null; then
+    if ! claude plugin list 2>/dev/null | grep -q "codex@openai-codex"; then
+        claude plugin marketplace add openai/codex-plugin-cc
+        claude plugin install codex@openai-codex
+        echo "    Installed codex plugin"
+    else
+        echo "    Codex plugin already installed, skipping."
+    fi
+else
+    echo "    Claude Code not found — skipping plugin install (install Claude Code first)"
+fi
 
 echo "==> Building container image..."
 podman build -t devenv -f "$SCRIPT_DIR/Dockerfile.dev" "$SCRIPT_DIR"

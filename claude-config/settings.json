@@ -1,14 +1,12 @@
 {
   "skipDangerousModePermissionPrompt": true,
+  "awaySummaryEnabled": false,
   "attribution": {
     "commit": "",
     "pr": ""
   },
-  "mcpServers": {
-    "codex": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "codex-mcp-server"]
-    }
+"statusLine": {
+    "type": "command",
+    "command": "sh ~/.claude/statusline-command.sh"
   }
 }

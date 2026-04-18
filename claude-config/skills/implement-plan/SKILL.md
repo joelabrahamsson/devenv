@@ -89,11 +89,9 @@ Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
 - The path to the plan file — instruct copilot to read it with its `view` tool
 - The full git diff (copilot can't run git, so this must be in the prompt)
 - The paths to CLAUDE.md and AGENTS.md — instruct copilot to read them with its `view` tool
-- Instructions to review the implementation for: bugs, security issues, test coverage gaps, code quality, adherence to project conventions, performance issues
+- Instruct copilot to read `~/workflows/planning/code-review-criteria.md` for the full review checklist and output format
 
 Do NOT paste the plan or CLAUDE.md/AGENTS.md contents into the prompt — copilot should read them directly.
-
-The prompt should ask copilot to structure its response as: Critical Issues, Suggested Improvements, Minor Observations, and Positive Aspects.
 
 Run copilot:
 ```

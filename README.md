@@ -22,7 +22,7 @@ Run the setup script once on a new Mac:
 bash setup-mac.sh
 ```
 
-This initialises the Podman VM, prompts for your name and email (for git commits), installs the `dev` shell function and safety-critical git config into your fish config, copies Claude Code skills and agents to `~/.claude/`, and builds the container image.
+This initialises the Podman VM, prompts for your name and email (for git commits), installs the `dev` shell function and safety-critical git config into your fish config, copies Claude Code skills and agents to `~/.claude/`, installs Claude Code plugins (codex-plugin-cc), copies shared workflow docs to `~/workflows/`, and builds the container image.
 
 After running, reload fish:
 
@@ -102,26 +102,33 @@ The GitHub token is shared with the parent project automatically.
 
 ---
 
-## Bundled Skills and Agents
+## Planning Workflow (Claude Code + Codex CLI)
 
-The environment includes custom Claude Code skills and agents (in `claude-config/`) for a **plan → implement → finalize** workflow. Each skill can be used independently or as a pipeline. Reviews run in parallel using both a Claude agent and GitHub Copilot CLI.
+The environment includes a **plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — Claude uses GPT (via Copilot CLI) as second opinion, Codex uses Claude (via Claude CLI) as second opinion.
 
-### `/plan-review [description]` — Planning
+Shared workflow content (review criteria, plan format, TDD structure) lives in `docs/workflows/planning/` and is referenced by both platforms' skills at `~/workflows/planning/` inside the container.
 
-Enters plan mode, explores the codebase, and creates a detailed TDD-structured implementation plan. Two adversarial reviews run in parallel (a Claude agent and Copilot CLI). Feedback is consolidated, the plan is revised, and saved to `docs/plans/`. You can then implement immediately, compact context first, or save for later.
+### Claude Code
 
-### `/implement-plan [path]` — Implementation
+| Skill | Description |
+|---|---|
+| `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + Copilot CLI), revises, saves to `docs/plans/` |
+| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs parallel code reviews, fixes issues |
+| `/finalize [path]` | Generates ADR in `docs/adrs/`, deletes plan file, offers to commit or create PR |
 
-Reads the plan and delegates each step to a Sonnet subagent following strict TDD (red → green → refactor). After all steps pass, the full test suite runs, then two parallel adversarial code reviews (Claude agent + Copilot CLI) catch remaining issues. Offers to commit, create a PR, or run `/finalize`.
+### Codex CLI
 
-### `/finalize [path]` — Documentation and shipping
+| Skill | Description |
+|---|---|
+| `$plan-review [description]` | Same workflow, uses Codex subagent + Claude CLI for parallel reviews |
+| `$implement-plan [path]` | Same workflow, uses Codex subagents + Claude CLI for code reviews |
+| `$finalize [path]` | Same workflow (mostly platform-agnostic) |
 
-Reads the plan and git diff, generates an Architecture Decision Record in `docs/adrs/` capturing the reasoning behind decisions, deletes the plan file, and offers to commit or create a PR.
+### Supporting components
 
-### Supporting agents
-
-- **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, and adherence to project conventions
+- **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, and adherence to project conventions (Claude Code: named agent, Codex: subagent with `references/` instructions)
 - **code-reviewer** — reviews code for bugs, security, test quality, and adherence to the plan
+- **Shared workflow docs** (`docs/workflows/planning/`) — review criteria, code review criteria, and plan format referenced by both platforms
 
 TDD is enforced by default. Plan files in `docs/plans/` bridge context between skills and sessions. ADRs capture reasoning, not just what was built.
 
@@ -148,7 +155,7 @@ For Shift+Enter in iTerm2: Preferences → Profiles → Keys → Key Mappings �
 
 ## Container Image
 
-The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, GitHub Copilot CLI, Claude Code, OpenAI Codex CLI (with `approval_policy = "never"`), Docker Compose, and Playwright system dependencies. The Codex MCP server is pre-configured in Claude Code so Claude can delegate to Codex for cross-model code review.
+The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, GitHub Copilot CLI, Claude Code (with codex-plugin-cc), OpenAI Codex CLI (with `approval_policy = "never"`), Docker Compose, and Playwright system dependencies.
 
 ---
 
@@ -158,17 +165,32 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 .
 ├── Dockerfile.dev                     # Container image definition
 ├── setup-mac.sh                       # One-time Mac setup (re-run to update)
+├── docs/workflows/planning/           # Shared workflow docs (deployed to ~/workflows/)
+│   ├── review-criteria.md             # Adversarial plan review checklist
+│   ├── code-review-criteria.md        # Adversarial code review checklist
+│   └── plan-format.md                 # Plan file format and TDD structure
 ├── claude-config/                     # Copied to ~/.claude/ in containers and on Mac
 │   ├── CLAUDE.md                      # Global Claude Code instructions for all projects
-│   ├── settings.json                  # Claude Code settings (skip permission prompt)
+│   ├── settings.json                  # Claude Code settings
+│   ├── statusline-command.sh          # Status line script (repo, branch, effort, context)
 │   ├── keybindings.json               # Ctrl+J newline binding
 │   ├── skills/
 │   │   ├── plan-review/SKILL.md       # /plan-review — planning with adversarial review
 │   │   ├── implement-plan/SKILL.md    # /implement-plan — TDD implementation via subagents
 │   │   └── finalize/SKILL.md          # /finalize — ADR generation + ship
 │   └── agents/
-│       ├── adversarial-reviewer/      # Plan review agent
-│       └── code-reviewer/             # Code review agent
+│       ├── adversarial-reviewer/      # Plan review agent (refs ~/workflows/)
+│       └── code-reviewer/             # Code review agent (refs ~/workflows/)
+├── codex-config/                      # Copied to ~/.codex/ in containers
+│   ├── AGENTS.md                      # Global Codex instructions for all projects
+│   └── skills/
+│       ├── plan-review/               # $plan-review — planning with adversarial review
+│       │   ├── SKILL.md
+│       │   └── references/            # Subagent instructions
+│       ├── implement-plan/            # $implement-plan — TDD implementation via subagents
+│       │   ├── SKILL.md
+│       │   └── references/            # Subagent instructions
+│       └── finalize/SKILL.md          # $finalize — ADR generation + ship
 ├── fish/
 │   └── dev.fish                       # dev, dev-shell, dev-worktree, dev-rm functions
 └── docker-allowlist/
