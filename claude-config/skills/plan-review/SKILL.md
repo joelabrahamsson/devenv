@@ -3,22 +3,22 @@ name: plan-review
 description: Create an implementation plan with adversarial review from both a Claude agent and GitHub Copilot CLI, then revise and optionally implement.
 argument-hint: "[description of what to plan]"
 user-invocable: true
-allowed-tools: "EnterPlanMode ExitPlanMode Write Edit Read Glob Grep Bash Agent AskUserQuestion"
+allowed-tools: "Write Edit Read Glob Grep Bash Agent AskUserQuestion"
 ---
 
 # Plan with Adversarial Review
 
 You are orchestrating a planning workflow with adversarial review. Follow these steps precisely.
 
-IMPORTANT: This workflow is designed to flow without unnecessary permission prompts. The tools listed in `allowed-tools` above are pre-authorized — use them without hesitation. Do NOT ask the user for confirmation before writing the plan file, exiting plan mode, running copilot, launching the adversarial agent, or updating the plan file. The user will review the plan after the adversarial reviews are complete.
+IMPORTANT: This workflow is designed to flow without unnecessary permission prompts. The tools listed in `allowed-tools` above are pre-authorized — use them without hesitation. Do NOT ask the user for confirmation before writing the plan file, running copilot, launching the adversarial agent, or updating the plan file. The user will review the plan after the adversarial reviews are complete.
 
-## Step 1: Enter Plan Mode
-
-Use the EnterPlanMode tool to enter plan mode.
+## Step 1: Establish the Task
 
 If arguments were provided (`$ARGUMENTS`), use them as the description of what to plan. Present this to the user and confirm it captures their intent before proceeding.
 
 If no arguments were provided, ask the user what they would like to plan. Ask as an open-ended question — do NOT present a list of categories or options to choose from. Let the user describe what they want in their own words.
+
+IMPORTANT: Do NOT use EnterPlanMode. This skill manages its own planning workflow — Claude Code's built-in plan mode conflicts with it (wrong file location, unwanted approval dialog on exit).
 
 ## Step 2: Create the Plan
 
@@ -90,9 +90,7 @@ Once the plan is complete, write it to a file at `docs/plans/YYYY-MM-DD-short-de
 - A TDD reminder: "## Implementation Approach\nThis plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test."
 - The full implementation plan with TDD-structured steps
 
-⚠️ CRITICAL: Do NOT call ExitPlanMode yet. Do NOT ask the user to review the plan. Do NOT present the plan for approval. You MUST complete Steps 3, 4, and 5 (adversarial reviews, consolidation, and revision) BEFORE exiting plan mode or presenting anything to the user. Tell the user the plan is written and you're now sending it for adversarial review, then immediately proceed to Step 3.
-
-Exit plan mode using ExitPlanMode only AFTER Step 5 is complete (plan has been revised based on review feedback).
+⚠️ CRITICAL: Do NOT ask the user to review the plan. Do NOT present the plan for approval. You MUST complete Steps 3, 4, and 5 (adversarial reviews, consolidation, and revision) BEFORE presenting anything to the user. Tell the user the plan is written and you're now sending it for adversarial review, then immediately proceed to Step 3.
 
 ## Step 3: Parallel Adversarial Reviews
 
@@ -164,8 +162,6 @@ Go through each piece of feedback:
 - **Ambiguous feedback**: Present it to the user with your assessment and ask whether to incorporate it.
 
 Update the plan file with the revisions. Note what changed and why at the bottom of the file under a "## Revision Notes" section.
-
-NOW call ExitPlanMode to exit plan mode.
 
 ## Step 6: Offer Implementation
 

@@ -3,7 +3,7 @@ name: implement-plan
 description: Implement a plan file using strict TDD workflow, then run adversarial code reviews and offer next steps.
 argument-hint: "[path to plan file]"
 user-invocable: true
-allowed-tools: "EnterPlanMode ExitPlanMode Write Edit Read Glob Grep Bash Agent AskUserQuestion TaskCreate TaskUpdate TaskList TaskGet"
+allowed-tools: "Write Edit Read Glob Grep Bash Agent AskUserQuestion TaskCreate TaskUpdate TaskList TaskGet"
 effort: high
 ---
 
