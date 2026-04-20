@@ -104,7 +104,7 @@ The GitHub token is shared with the parent project automatically.
 
 ## Planning Workflow (Claude Code + Codex CLI)
 
-The environment includes a **plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — Claude uses GPT (via Copilot CLI) as second opinion, Codex uses Claude (via Claude CLI) as second opinion.
+The environment includes a **plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — both platforms use their own subagent plus Copilot CLI as second opinion (GPT-5.4 for Claude Code, Sonnet for Codex).
 
 Shared workflow content (review criteria, plan format, TDD structure) lives in `docs/workflows/planning/` and is referenced by both platforms' skills at `~/workflows/planning/` inside the container.
 
@@ -120,8 +120,8 @@ Shared workflow content (review criteria, plan format, TDD structure) lives in `
 
 | Skill | Description |
 |---|---|
-| `$plan-review [description]` | Same workflow, uses Codex subagent + Claude CLI for parallel reviews |
-| `$implement-plan [path]` | Same workflow, uses Codex subagents + Claude CLI for code reviews |
+| `$plan-review [description]` | Same workflow, uses Codex subagent + Copilot CLI (Sonnet) for parallel reviews |
+| `$implement-plan [path]` | Same workflow, uses Codex subagents + Copilot CLI (Sonnet) for code reviews |
 | `$finalize [path]` | Same workflow (mostly platform-agnostic) |
 
 ### Supporting components

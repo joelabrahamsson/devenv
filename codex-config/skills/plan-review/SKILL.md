@@ -42,7 +42,7 @@ Once the plan is complete, write it to the location specified in plan-format.md.
 
 CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the Claude CLI review in the same turn.
 
-Before launching, write the Claude review prompt to a temporary file (prerequisite for the shell call).
+Before launching, write the Copilot review prompt to a temporary file (prerequisite for the shell call).
 
 ### 3a: Codex Adversarial Subagent Review
 
@@ -51,24 +51,27 @@ Read `references/adversarial-reviewer.md` for the subagent instructions template
 - The original goal/task description
 - The path to the plan file
 
-### 3b: Claude CLI Review (second opinion)
+### 3b: GitHub Copilot CLI Review (second opinion)
 
-Write the review prompt to a temporary file (e.g., `/tmp/claude-plan-review-prompt.txt`). The prompt should contain:
+Write the review prompt to a temporary file (e.g., `/tmp/copilot-plan-review-prompt.txt`). The prompt should contain:
 - The original goal/task description (refined version after user Q&A)
-- The path to the plan file — instruct Claude to read it
-- The paths to AGENTS.md and CLAUDE.md (if they exist) — instruct Claude to read them
-- The path to `~/workflows/planning/review-criteria.md` — instruct Claude to read it for the review checklist
-- Do NOT paste file contents into the prompt — Claude has file access and should read files directly
+- The path to the plan file — instruct copilot to read it using its `view` tool
+- The paths to AGENTS.md and CLAUDE.md (if they exist) — instruct copilot to read them using its `view` tool
+- The path to `~/workflows/planning/review-criteria.md` — instruct copilot to read it for the review checklist
+- Do NOT paste file contents into the prompt — copilot has `view`, `glob`, and `rg` tools and should read files directly
 
-Run Claude CLI:
+Run Copilot CLI:
 ```
-claude -p "$(cat /tmp/claude-plan-review-prompt.txt)" --allowedTools Read,Glob,Grep --model sonnet --effort high
+cd /workspace && copilot -p "$(cat /tmp/copilot-plan-review-prompt.txt)" \
+  --model sonnet \
+  --available-tools='view,glob,rg' \
+  --no-ask-user
 ```
 
 Notes:
-- Run the Claude command in the background with a 15-minute timeout
-- If the Codex subagent review finishes first and Claude is still running, inform the user
-- If Claude times out after 15 minutes, inform the user and ask whether to proceed with only the Codex review or retry
+- Run the copilot command in the background with a 15-minute timeout
+- If the Codex subagent review finishes first and copilot is still running, inform the user
+- If copilot times out after 15 minutes, inform the user and ask whether to proceed with only the Codex review or retry
 
 ## Step 4: Consolidate Feedback
 

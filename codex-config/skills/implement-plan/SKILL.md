@@ -64,7 +64,7 @@ If tests fail, spawn a subagent to investigate and fix, providing the test outpu
 
 Once all tests pass, launch adversarial code reviews. Launch BOTH reviews simultaneously.
 
-Before launching, prepare the Claude review prompt file (prerequisite for the shell call).
+Before launching, prepare the Copilot review prompt file (prerequisite for the shell call).
 
 ### 5a: Codex Code Review Subagent
 
@@ -72,25 +72,28 @@ Read `references/code-reviewer.md` for the subagent instructions template. Use `
 - The instructions from the reference file
 - The path to the plan file
 
-### 5b: Claude CLI Review (second opinion)
+### 5b: GitHub Copilot CLI Review (second opinion)
 
-Write the review prompt to `/tmp/claude-code-review-prompt.txt`. Include:
-- The path to the plan file — instruct Claude to read it
-- The full git diff (Claude can read files and run commands, but include the diff path or tell it to read the diff)
+Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
+- The path to the plan file — instruct copilot to read it using its `view` tool
+- The full git diff (copilot can't run git, so the diff must be in the prompt)
 - Instruction to read `~/workflows/planning/code-review-criteria.md` for the review checklist
-- The paths to AGENTS.md and CLAUDE.md — instruct Claude to read them
+- The paths to AGENTS.md and CLAUDE.md — instruct copilot to read them using its `view` tool
 
-Do NOT paste file contents into the prompt — Claude should read files directly.
+Do NOT paste the plan or convention files into the prompt — copilot should read them directly.
 
-Run Claude CLI:
+Run Copilot CLI:
 ```
-claude -p "$(cat /tmp/claude-code-review-prompt.txt)" --allowedTools Read,Glob,Grep --model sonnet --effort high
+cd /workspace && copilot -p "$(cat /tmp/copilot-code-review-prompt.txt)" \
+  --model sonnet \
+  --available-tools='view,glob,rg' \
+  --no-ask-user
 ```
 
 Notes:
-- Run the Claude command in the background with a 15-minute timeout
-- If the Codex subagent finishes first and Claude is still running, inform the user
-- If Claude times out, ask whether to proceed with only the Codex review or retry
+- Run the copilot command in the background with a 15-minute timeout
+- If the Codex subagent finishes first and copilot is still running, inform the user
+- If copilot times out, ask whether to proceed with only the Codex review or retry
 
 ## Step 6: Consolidate and Fix
 
