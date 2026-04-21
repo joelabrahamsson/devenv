@@ -122,6 +122,7 @@ RUN mkdir -p /home/dev/.config/fish && printf '%s\n' \
     'pyenv init - fish | source' \
     'fish_add_path /home/dev/.local/bin' \
     'alias g git' \
+    'alias gst "git status"' \
     > /home/dev/.config/fish/config.fish
 
 WORKDIR /workspace

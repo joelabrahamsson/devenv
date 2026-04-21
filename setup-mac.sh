@@ -129,6 +129,20 @@ else
     echo "    Git hooks env vars already in $FISH_CONFIG, skipping."
 fi
 
+echo "==> Installing shell aliases..."
+FISH_FUNCTIONS="$HOME/.config/fish/functions"
+mkdir -p "$FISH_FUNCTIONS"
+# Remove old hand-created function files and replace with managed versions
+for old_file in "$FISH_FUNCTIONS/gst.fish" "$FISH_FUNCTIONS/gst=git.fish"; do
+    rm -f "$old_file"
+done
+cat > "$FISH_FUNCTIONS/gst.fish" << 'ALIASEOF'
+function gst --wraps='git status' --description 'alias gst=git status'
+  git status $argv
+end
+ALIASEOF
+echo "    Installed gst alias"
+
 echo "==> Installing shared workflow docs..."
 mkdir -p "$HOME/workflows"
 cp -r "$SCRIPT_DIR/docs/workflows/"* "$HOME/workflows/"
