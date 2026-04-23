@@ -80,6 +80,29 @@ dev myproject --rebuild
 superclaude
 ```
 
+### Port Forwarding
+
+To access a web app running inside the container from your Mac's browser, use the `-p` flag to forward ports:
+
+```bash
+# Forward container port 3000 to Mac port 3000
+dev myproject -p 3000:3000
+
+# Forward multiple ports
+dev myproject -p 3000:3000 -p 5173:5173
+
+# Map to a different host port (Mac port 8080 → container port 3000)
+dev myproject -p 8080:3000
+```
+
+The format is `-p HOST:CONTAINER` (same as Docker). Once forwarded, browse to `http://localhost:HOST` on your Mac.
+
+Port mappings are set at container creation time. To change them on an existing container, use `--rebuild`:
+
+```bash
+dev myproject --rebuild -p 3000:3000 -p 5173:5173
+```
+
 ### Docker Compose / Test Infrastructure
 
 Projects can run test infrastructure (Postgres, Redis, etc.) via Docker Compose. Each project has its own DinD sidecar with a fully isolated Docker daemon — two projects can each run postgres on port 5432 without collision.
@@ -93,6 +116,9 @@ Work on multiple branches of the same project simultaneously, each in its own is
 ```bash
 # Create a worktree container (creates the branch if it doesn't exist)
 dev-worktree myproject fix/some-branch
+
+# With port forwarding
+dev-worktree myproject fix/some-branch -p 3000:3000
 
 # Remove a worktree and all its infrastructure
 dev-worktree-rm myproject fix/some-branch

@@ -3,7 +3,7 @@
 # Sourced from ~/.config/fish/config.fish by setup-mac.sh.
 #
 # Functions:
-#   dev <project-name> [--rebuild]       — create/enter a project container
+#   dev <project-name> [--rebuild] [-p HOST:CONTAINER ...]  — create/enter a project container
 #   dev-rm <project-name>               — remove a project's containers and infrastructure
 #   dev-worktree <project> <branch> [--rebuild] — create a git worktree and enter its container
 #   dev-worktree-rm <project> <branch>  — remove a worktree and its infrastructure
@@ -21,8 +21,29 @@
 function dev
     set project $argv[1]
     if test -z "$project"
-        echo "Usage: dev <project-name> [--rebuild]"
+        echo "Usage: dev <project-name> [--rebuild] [-p HOST:CONTAINER ...]"
         return 1
+    end
+
+    # --- Parse -p / --port flags ---
+    # Collect port mappings (e.g., -p 3000:3000 -p 5173:8080).
+    # These are applied to the DinD container since the dev container
+    # shares its network namespace.
+    set port_args
+    set i 2
+    while test $i -le (count $argv)
+        if test "$argv[$i]" = "-p" -o "$argv[$i]" = "--port"
+            set next (math $i + 1)
+            if test $next -le (count $argv)
+                set port_args $port_args -p $argv[$next]
+                set i (math $i + 2)
+            else
+                echo "ERROR: $argv[$i] requires a HOST:CONTAINER port mapping"
+                return 1
+            end
+        else
+            set i (math $i + 1)
+        end
     end
 
     # --- Handle --rebuild flag ---
@@ -115,6 +136,9 @@ function dev
     if not podman container exists $project
         set is_new 1
         echo "Creating new containers for '$project'..."
+    else if test (count $port_args) -gt 0
+        echo "⚠ Port mappings are only applied when creating containers."
+        echo "  Use --rebuild to recreate with new port mappings."
 
         # Create a shared network and volume for the dev container and DinD sidecar.
         # The network lets the dev container reach compose services published by DinD.
@@ -137,6 +161,7 @@ function dev
                 --security-opt label=disable \
                 -v $dind_volume:/var/run \
                 -e DOCKER_TLS_CERTDIR="" \
+                $port_args \
                 docker:27-dind \
                 dockerd --host=unix:///var/run/docker.sock
         end
