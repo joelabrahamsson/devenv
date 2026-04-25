@@ -130,14 +130,15 @@ The GitHub token is shared with the parent project automatically.
 
 ## Planning Workflow (Claude Code + Codex CLI)
 
-The environment includes a **plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — both platforms use their own subagent plus Copilot CLI as second opinion (GPT-5.4 for Claude Code, Sonnet for Codex).
+The environment includes a **spec → plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — both platforms use their own subagent plus Copilot CLI as second opinion (GPT-5.4 for Claude Code, Sonnet for Codex).
 
-Shared workflow content (review criteria, plan format, TDD structure) lives in `docs/workflows/planning/` and is referenced by both platforms' skills at `~/workflows/planning/` inside the container.
+Shared workflow content (review criteria, plan format, spec format, TDD structure) lives in `docs/workflows/planning/` and is referenced by both platforms' skills at `~/workflows/planning/` inside the container.
 
 ### Claude Code
 
 | Skill | Description |
 |---|---|
+| `/bdd-spec [feature]` | Conversational BDD spec authoring — elicits specs through structured dialogue, produces executable tests |
 | `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + Copilot CLI), revises, saves to `docs/plans/` |
 | `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs parallel code reviews, fixes issues |
 | `/finalize [path]` | Generates ADR in `docs/adrs/`, deletes plan file, offers to commit or create PR |
@@ -146,15 +147,43 @@ Shared workflow content (review criteria, plan format, TDD structure) lives in `
 
 | Skill | Description |
 |---|---|
+| `$bdd-spec [feature]` | Same conversational spec authoring workflow |
 | `$plan-review [description]` | Same workflow, uses Codex subagent + Copilot CLI (Sonnet) for parallel reviews |
 | `$implement-plan [path]` | Same workflow, uses Codex subagents + Copilot CLI (Sonnet) for code reviews |
 | `$finalize [path]` | Same workflow (mostly platform-agnostic) |
 
+### Specification tests
+
+The `/bdd-spec` skill produces human-owned BDD specification tests through a four-stage conversation: **Understanding** (clarify the feature), **Scenario Outline** (agree on coverage at headline level), **Detailing** (full Given/When/Then steps), and **Challenge Round** (devil's advocate on gaps and assumptions). The agent elicits specs — it doesn't write them for you.
+
+Spec tests form a durable layer of acceptance criteria that agents must not modify without explicit user approval. They sit above agent-written integration and unit tests in a three-tier test strategy:
+
+1. **Specification tests** — human-owned, capture intent, small in number, durable
+2. **Integration tests** — agent-written and human-reviewed
+3. **Unit tests** — agent-written, disposable scaffolding
+
+When spec files are passed to `/plan-review`, they become formal acceptance criteria in the plan. The existing spec test serves as the failing test (RED phase) for TDD steps that satisfy spec scenarios — no duplicate tests needed. `/implement-plan` runs spec tests as acceptance gates and instructs subagents to never modify spec files. Adversarial reviewers check both that spec files were not modified and that the implementation semantically satisfies the spec.
+
+Example pipeline with specs:
+```bash
+/bdd-spec "user login with email and password"
+# → conversational spec authoring
+# → saves test/specs/authentication/user-login.spec.ts
+
+/plan-review test/specs/authentication/user-login.spec.ts — also handle rate limiting and session expiry
+# → spec becomes acceptance criteria, additional scope is planned alongside
+
+/implement-plan docs/plans/2026-04-23-user-login.md
+# → spec tests are read-only acceptance gates throughout implementation
+```
+
+Without specs, the pipeline works exactly as before — all spec-related behavior is opt-in.
+
 ### Supporting components
 
-- **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, and adherence to project conventions (Claude Code: named agent, Codex: subagent with `references/` instructions)
-- **code-reviewer** — reviews code for bugs, security, test quality, and adherence to the plan
-- **Shared workflow docs** (`docs/workflows/planning/`) — review criteria, code review criteria, and plan format referenced by both platforms
+- **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, spec awareness, and adherence to project conventions (Claude Code: named agent, Codex: subagent with `references/` instructions)
+- **code-reviewer** — reviews code for bugs, security, test quality, spec integrity, and adherence to the plan
+- **Shared workflow docs** (`docs/workflows/planning/`) — review criteria, code review criteria, plan format, and spec format referenced by both platforms
 
 TDD is enforced by default. Plan files in `docs/plans/` bridge context between skills and sessions. ADRs capture reasoning, not just what was built.
 
@@ -194,13 +223,15 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 ├── docs/workflows/planning/           # Shared workflow docs (deployed to ~/workflows/)
 │   ├── review-criteria.md             # Adversarial plan review checklist
 │   ├── code-review-criteria.md        # Adversarial code review checklist
-│   └── plan-format.md                 # Plan file format and TDD structure
+│   ├── plan-format.md                 # Plan file format and TDD structure
+│   └── spec-format.md                 # Specification test conventions and format
 ├── claude-config/                     # Copied to ~/.claude/ in containers and on Mac
 │   ├── CLAUDE.md                      # Global Claude Code instructions for all projects
 │   ├── settings.json                  # Claude Code settings
 │   ├── statusline-command.sh          # Status line script (repo, branch, effort, context)
 │   ├── keybindings.json               # Ctrl+J newline binding
 │   ├── skills/
+│   │   ├── bdd-spec/SKILL.md          # /bdd-spec — conversational BDD spec authoring
 │   │   ├── plan-review/SKILL.md       # /plan-review — planning with adversarial review
 │   │   ├── implement-plan/SKILL.md    # /implement-plan — TDD implementation via subagents
 │   │   └── finalize/SKILL.md          # /finalize — ADR generation + ship
@@ -210,6 +241,7 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 ├── codex-config/                      # Copied to ~/.codex/ in containers
 │   ├── AGENTS.md                      # Global Codex instructions for all projects
 │   └── skills/
+│       ├── bdd-spec/SKILL.md          # $bdd-spec — conversational BDD spec authoring
 │       ├── plan-review/               # $plan-review — planning with adversarial review
 │       │   ├── SKILL.md
 │       │   └── references/            # Subagent instructions

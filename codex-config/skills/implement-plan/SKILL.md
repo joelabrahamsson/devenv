@@ -21,6 +21,8 @@ Your role is ORCHESTRATOR. Do NOT explore the codebase or read source files your
 
 3. Identify the project's test command from AGENTS.md or CLAUDE.md (e.g., `npm test`, `pytest`). If not documented, ask the user.
 
+4. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
+
 Then immediately proceed to Step 2.
 
 ## Step 2: Track Progress
@@ -39,6 +41,7 @@ Work through each step in order. For each step (or group of closely related step
    - Follow strict TDD: RED (write failing tests) → RUN (confirm failure) → GREEN (minimal implementation) → RUN (confirm pass) → REFACTOR (if needed)
    - Do NOT spawn further subagents
    - Report back: what files were created/modified, what tests were added, whether all tests pass
+   - **If acceptance criteria exist**: "The following files are SPECIFICATION TESTS — human-owned and read-only. Do NOT modify them under any circumstances: `<list spec file paths>`. If your implementation contradicts a spec test (the test fails and you believe the test is wrong), STOP and report the conflict. Do not modify the spec test to make it pass."
 
    Also include:
    - The test command to use
@@ -58,6 +61,11 @@ Work through each step in order. For each step (or group of closely related step
 
 Once all steps are complete, run the full test suite yourself (via `shell`) to confirm everything is green end-to-end.
 
+**If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
+- Do NOT attempt to fix by modifying the spec test
+- Check if the implementation is wrong (spawn a subagent to investigate and fix the implementation)
+- If the implementation appears correct but the spec test still fails, report the conflict to the user — the user decides whether the spec needs revision
+
 If tests fail, spawn a subagent to investigate and fix, providing the test output and relevant file paths.
 
 ## Step 5: Code Review
@@ -71,6 +79,7 @@ Before launching, prepare the Copilot review prompt file (prerequisite for the s
 Read `references/code-reviewer.md` for the subagent instructions template. Use `spawn_agent` with a prompt that includes:
 - The instructions from the reference file
 - The path to the plan file
+- **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
 
 ### 5b: GitHub Copilot CLI Review (second opinion)
 

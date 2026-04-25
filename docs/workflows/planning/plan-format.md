@@ -55,6 +55,36 @@ Step 3: Add the /api/tags endpoint
 3.5 REFACTOR - (if needed)
 ```
 
+## Acceptance Criteria (Optional)
+
+When a plan is derived from specification tests (produced by `/bdd-spec`), include this section after the Goal:
+
+```markdown
+## Acceptance Criteria
+- path/to/spec-file.spec.ts (all scenarios must pass)
+```
+
+List each spec file that the implementation must satisfy. These files are human-owned and read-only — agents must not modify them.
+
+When acceptance criteria exist, implementation steps that satisfy spec scenarios should use the existing spec test as the RED phase:
+
+```
+Step 2: Implement login endpoint (satisfies spec: user-login.spec.ts scenarios 1-3)
+
+2.1 RED - Run existing spec test, confirm it fails (endpoint doesn't exist yet)
+
+2.2 GREEN - Implement:
+- Create src/routes/auth/login.ts
+- Add POST handler for /auth/login
+- Wire up to auth service
+
+2.3 RUN - Verify spec test passes
+
+2.4 REFACTOR - (if needed)
+```
+
+Additional tests (integration, unit) are still written per normal TDD for edge cases and implementation details not covered by the spec.
+
 ## Detail Level
 
 Plans should be detailed enough that someone unfamiliar with the conversation could implement them. Include specific file paths, function names, test descriptions, and implementation details.

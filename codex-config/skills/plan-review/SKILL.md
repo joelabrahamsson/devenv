@@ -13,6 +13,15 @@ If arguments were provided (`$ARGUMENTS`), use them as the description of what t
 
 If no arguments were provided, ask the user what they would like to plan. Ask as an open-ended question — do NOT present a list of categories or options to choose from.
 
+### Spec File Detection
+
+Check if any part of `$ARGUMENTS` contains a path to an existing file. For each path found, read the file and check if it begins with a `SPECIFICATION TEST` header comment. If so:
+- Separate it as **acceptance criteria** — these spec tests define the required behavior
+- The remaining text in `$ARGUMENTS` is additional scope and implementation guidance
+- Present both to the user: "I see this spec file as acceptance criteria, and the additional scope is: ..."
+
+If no spec files are found in the arguments, proceed normally. The rest of this workflow works with or without acceptance criteria.
+
 ## Step 2: Create the Plan
 
 ### 2a: Understand the codebase
@@ -31,6 +40,18 @@ Start by reading the project's AGENTS.md (and CLAUDE.md, ONBOARDING.md if they e
 
 - Ask the user clarifying questions as needed
 - Design a step-by-step implementation plan
+
+### When Acceptance Criteria Exist
+
+If spec files were identified in Step 1:
+1. Read the spec files to understand the required behavior
+2. Include an "## Acceptance Criteria" section in the plan listing the spec file paths (see plan-format.md for the format)
+3. For implementation steps that satisfy spec scenarios, the RED phase is "run the existing spec test and confirm it fails" rather than "write a new test" — the spec IS the failing test
+4. Additional tests (integration, unit) should still be written per normal TDD for implementation details, edge cases, and any additional scope beyond the spec
+
+The plan covers ALL the work needed — both satisfying the spec and any additional scope the user described. The spec provides the acceptance criteria, not the complete plan.
+
+### Plan Format and TDD Structure
 
 Read `~/workflows/planning/plan-format.md` for the required plan file format and TDD structure. Follow it exactly.
 

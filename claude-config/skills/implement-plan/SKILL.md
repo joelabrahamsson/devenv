@@ -27,6 +27,8 @@ IMPORTANT: This workflow is designed to flow without unnecessary permission prom
 
 3. Identify the project's test command from CLAUDE.md or AGENTS.md (e.g., `npm test`, `pytest`). If not documented, ask the user.
 
+4. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
+
 Then immediately proceed to Step 2. Do NOT read source code, types, components, or any other project files.
 
 ## Step 2: Create Task List
@@ -46,6 +48,7 @@ Work through each task in order. For each task (or group of closely related task
    - Read the project's CLAUDE.md / AGENTS.md for conventions and patterns
    - Follow strict TDD: RED (write failing tests) → RUN (confirm failure) → GREEN (minimal implementation) → RUN (confirm pass) → REFACTOR (if needed)
    - Report back: what files were created/modified, what tests were added, whether all tests pass
+   - **If acceptance criteria exist**: "The following files are SPECIFICATION TESTS — human-owned and read-only. Do NOT modify them under any circumstances: `<list spec file paths>`. If your implementation contradicts a spec test (the test fails and you believe the test is wrong), STOP and report the conflict. Do not modify the spec test to make it pass."
 
    Also include in the prompt:
    - The test command to use (from the project's docs or inferred from the codebase)
@@ -65,6 +68,11 @@ Work through each task in order. For each task (or group of closely related task
 
 Once all tasks are complete, run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps that individual agents might have missed.
 
+**If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
+- Do NOT attempt to fix by modifying the spec test
+- Check if the implementation is wrong (launch a Sonnet agent to investigate and fix the implementation)
+- If the implementation appears correct but the spec test still fails, report the conflict to the user via AskUserQuestion — the user decides whether the spec needs revision
+
 If tests fail, launch a Sonnet agent to investigate and fix, providing it with the test output and relevant file paths.
 
 ## Step 5: Code Review
@@ -80,6 +88,7 @@ Before launching, prepare the copilot prompt file (prerequisite for the Bash cal
 Launch the `code-reviewer` agent with a prompt that includes:
 - The path to the plan file — tell it to read the file itself
 - The full git diff of all changes (`git diff` for unstaged, or `git diff HEAD` if staged) — the agent can't run git, so this must be included in the prompt
+- **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read the plan and CLAUDE.md/AGENTS.md directly.
 

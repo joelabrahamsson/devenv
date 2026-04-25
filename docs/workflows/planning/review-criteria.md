@@ -52,6 +52,13 @@ Evaluate the plan against ALL of the following criteria:
 - Is the plan over-engineered for what's needed?
 - Are there simpler approaches that would achieve the same goal?
 
+### Specification Test Awareness
+If the plan has an "Acceptance Criteria" section referencing specification test files:
+- Does the plan treat the spec files as read-only? No step should modify specification test files.
+- Do implementation steps that satisfy spec scenarios correctly use the existing spec test as the RED phase (run existing test, confirm it fails) rather than writing new overlapping tests?
+- Does the plan cover all scenarios in the referenced spec files, or are some left unsatisfied without explanation?
+- Are additional tests (integration, unit) planned for edge cases and implementation details beyond what the spec covers?
+
 ## Output Format
 
 Structure your review as:

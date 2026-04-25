@@ -40,6 +40,12 @@ Read all changed files in full (not just the diff) to understand the complete co
 - Were any planned steps skipped or partially implemented?
 - Were any unplanned changes introduced?
 
+### Specification Test Integrity
+If the project has specification test files (files with a `SPECIFICATION TEST` header comment):
+- Were any specification test files modified? This is a **Critical Issue** — spec tests are human-owned and must not be modified without explicit user approval.
+- Does the implementation actually satisfy the spec scenarios **semantically**? Don't just check that tests pass — verify that the implementation delivers the behavior described in the spec. A test can pass for the wrong reasons (e.g., testing something narrower than what the spec describes, or the test setup masking a real failure).
+- Were new tests written that overlap with or duplicate specification test scenarios? This suggests the agent may be writing weaker tests that could pass even if the spec-level behavior is broken.
+
 ### Performance
 - Are there N+1 queries, missing indexes, or unbounded operations?
 - Are there unnecessary allocations or computations in hot paths?

@@ -20,6 +20,15 @@ If no arguments were provided, ask the user what they would like to plan. Ask as
 
 IMPORTANT: Do NOT use EnterPlanMode. This skill manages its own planning workflow — Claude Code's built-in plan mode conflicts with it (wrong file location, unwanted approval dialog on exit).
 
+### Spec File Detection
+
+Check if any part of `$ARGUMENTS` contains a path to an existing file. For each path found, read the file and check if it begins with a `SPECIFICATION TEST` header comment. If so:
+- Separate it as **acceptance criteria** — these spec tests define the required behavior
+- The remaining text in `$ARGUMENTS` is additional scope and implementation guidance
+- Present both to the user: "I see this spec file as acceptance criteria, and the additional scope is: ..."
+
+If no spec files are found in the arguments, proceed normally. The rest of this workflow works with or without acceptance criteria.
+
 ## Step 2: Create the Plan
 
 ### 2a: Understand the codebase (token-efficient exploration)
@@ -42,6 +51,16 @@ Start by reading the project's CLAUDE.md (and AGENTS.md, ONBOARDING.md if they e
 - Design a step-by-step implementation plan
 
 The plan should be detailed enough that someone unfamiliar with the conversation could implement it. Include specific file paths, function names, test descriptions, and implementation details.
+
+### When Acceptance Criteria Exist
+
+If spec files were identified in Step 1:
+1. Read the spec files to understand the required behavior
+2. Include an "## Acceptance Criteria" section in the plan listing the spec file paths (see plan-format.md for the format)
+3. For implementation steps that satisfy spec scenarios, the RED phase is "run the existing spec test and confirm it fails" rather than "write a new test" — the spec IS the failing test
+4. Additional tests (integration, unit) should still be written per normal TDD for implementation details, edge cases, and any additional scope beyond the spec
+
+The plan covers ALL the work needed — both satisfying the spec and any additional scope the user described. The spec provides the acceptance criteria, not the complete plan.
 
 ### Plan Format and TDD Structure
 
