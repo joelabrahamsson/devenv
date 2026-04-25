@@ -140,7 +140,7 @@ Shared workflow content (review criteria, plan format, spec format, TDD structur
 |---|---|
 | `/bdd-spec [feature]` | Conversational BDD spec authoring — elicits specs through structured dialogue, produces executable tests |
 | `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + Copilot CLI), revises, saves to `docs/plans/` |
-| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs parallel code reviews, fixes issues |
+| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs a boy scout cleanup pass, then parallel code reviews |
 | `/finalize [path]` | Generates ADR in `docs/adrs/`, deletes plan file, offers to commit or create PR |
 
 ### Codex CLI
@@ -183,6 +183,7 @@ Without specs, the pipeline works exactly as before — all spec-related behavio
 
 - **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, spec awareness, and adherence to project conventions (Claude Code: named agent, Codex: subagent with `references/` instructions)
 - **code-reviewer** — reviews code for bugs, security, test quality, spec integrity, and adherence to the plan
+- **boyscout** — after implementation, cleans up touched files and their one-hop neighbors: removes dead code, fixes stale comments, corrects naming inconsistencies, and applies small quality improvements
 - **Shared workflow docs** (`docs/workflows/planning/`) — review criteria, code review criteria, plan format, and spec format referenced by both platforms
 
 TDD is enforced by default. Plan files in `docs/plans/` bridge context between skills and sessions. ADRs capture reasoning, not just what was built.
@@ -237,6 +238,7 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 │   │   └── finalize/SKILL.md          # /finalize — ADR generation + ship
 │   └── agents/
 │       ├── adversarial-reviewer/      # Plan review agent (refs ~/workflows/)
+│       ├── boyscout/                  # Boy scout cleanup agent (post-implementation)
 │       └── code-reviewer/             # Code review agent (refs ~/workflows/)
 ├── codex-config/                      # Copied to ~/.codex/ in containers
 │   ├── AGENTS.md                      # Global Codex instructions for all projects

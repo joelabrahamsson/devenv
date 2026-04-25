@@ -64,9 +64,26 @@ Work through each task in order. For each task (or group of closely related task
 
 **Grouping steps:** If the plan has small, closely related steps (e.g., "add a type" then "add a function using that type"), you can group 2-3 into a single agent call. Don't group more than 3, and don't group steps that are conceptually independent.
 
-## Step 4: Verification
+## Step 4: Boy Scout Pass
 
-Once all tasks are complete, run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps that individual agents might have missed.
+Once all tasks are complete, improve the code around the implementation before final verification and review.
+
+1. Get the list of files changed by the implementation:
+   ```
+   git diff --name-only HEAD
+   ```
+   (or `git diff --name-only` if changes are unstaged)
+
+2. Launch the `boyscout` agent with a prompt that includes:
+   - The list of changed files
+   - The project's test command
+   - Instruction to read the project's CLAUDE.md/AGENTS.md for conventions
+
+3. When the agent completes, review its summary. If it reports test failures it couldn't resolve, launch a Sonnet agent to fix, or revert the problematic boy scout changes.
+
+## Step 5: Verification
+
+Run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps — including any changes made by the boy scout pass.
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test
@@ -75,7 +92,7 @@ Once all tasks are complete, run the full test suite yourself (via Bash) to conf
 
 If tests fail, launch a Sonnet agent to investigate and fix, providing it with the test output and relevant file paths.
 
-## Step 5: Code Review
+## Step 6: Code Review
 
 Once all tests pass, launch adversarial code reviews.
 
@@ -83,7 +100,7 @@ CRITICAL: You MUST launch both reviews in the SAME message using multiple tool c
 
 Before launching, prepare the copilot prompt file (prerequisite for the Bash call).
 
-### 5a: Claude Code Review Agent
+### 6a: Claude Code Review Agent
 
 Launch the `code-reviewer` agent with a prompt that includes:
 - The path to the plan file — tell it to read the file itself
@@ -92,7 +109,7 @@ Launch the `code-reviewer` agent with a prompt that includes:
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read the plan and CLAUDE.md/AGENTS.md directly.
 
-### 5b: GitHub Copilot CLI Review
+### 6b: GitHub Copilot CLI Review
 
 Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
 - The path to the plan file — instruct copilot to read it with its `view` tool
@@ -115,7 +132,7 @@ Notes:
 - If the Claude review finishes first and copilot is still running, inform the user. If it's been more than 5 minutes, note that it's taking longer than expected.
 - If copilot times out after 15 minutes, ask the user whether to proceed with only the Claude review or retry.
 
-## Step 6: Consolidate and Fix
+## Step 7: Consolidate and Fix
 
 Once BOTH reviews are complete:
 1. Consolidate feedback — group by severity, deduplicate, note consensus and disagreements
@@ -126,7 +143,7 @@ Once BOTH reviews are complete:
    - **Ambiguous**: Present to user with your assessment and ask
 4. Run the full test suite again after fixes to confirm nothing broke
 
-## Step 7: Next Steps
+## Step 8: Next Steps
 
 All implementation and review is complete. Before presenting options, assess whether this implementation introduced decisions, patterns, or reasoning that would provide valuable context for future sessions (e.g., new architectural patterns, non-obvious trade-offs, convention changes). If so, suggest the `/finalize` option.
 
