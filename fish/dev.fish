@@ -32,7 +32,7 @@ function dev
     set port_args
     set i 2
     while test $i -le (count $argv)
-        if test "$argv[$i]" = "-p" -o "$argv[$i]" = "--port"
+        if contains -- "$argv[$i]" -p --port
             set next (math $i + 1)
             if test $next -le (count $argv)
                 set port_args $port_args -p $argv[$next]
@@ -136,9 +136,6 @@ function dev
     if not podman container exists $project
         set is_new 1
         echo "Creating new containers for '$project'..."
-    else if test (count $port_args) -gt 0
-        echo "⚠ Port mappings are only applied when creating containers."
-        echo "  Use --rebuild to recreate with new port mappings."
 
         # Create a shared network and volume for the dev container and DinD sidecar.
         # The network lets the dev container reach compose services published by DinD.
@@ -276,6 +273,9 @@ function dev
             echo "ERROR: Failed to create container."
             return 1
         end
+    else if test (count $port_args) -gt 0
+        echo "⚠ Port mappings are only applied when creating containers."
+        echo "  Use --rebuild to recreate with new port mappings."
     end
 
     # Start both containers
