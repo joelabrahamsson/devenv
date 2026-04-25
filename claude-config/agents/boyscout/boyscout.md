@@ -63,7 +63,10 @@ Work through each in-scope file and look for:
    c. Read each neighbor
    d. Apply fixes per the rules above
 3. After all changes, run the project's test command to verify nothing broke
-4. If tests fail, revert the change that caused the failure (use `git checkout -- <file>`) and move on
+4. If tests fail:
+   a. Identify which change caused the failure and revert it (use `git checkout -- <file>`)
+   b. Run tests again to confirm they pass after the revert
+   c. **Report the failure** in your output — include which file/change caused it, the test that failed, and the error message. Do NOT silently skip past it.
 
 ## Output
 

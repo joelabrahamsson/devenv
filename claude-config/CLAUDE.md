@@ -22,6 +22,23 @@ When fixing bugs, follow a TDD red-green workflow by default:
 
 Do not skip the failing test step. The test proves the bug exists and prevents regressions. Only skip this workflow if the user explicitly asks to, or if the bug is in code that has no test infrastructure.
 
+## Failing Tests Policy
+
+**Failing tests are never acceptable.** This is a non-negotiable rule.
+
+When tests fail, you must NOT:
+- Dismiss the failure as "flaky" or "intermittent"
+- Conclude the failure is "unrelated to my changes" and move on
+- Skip, disable, or mark tests as pending/skipped to get past the failure
+- Rationalize the failure away for any reason
+
+When tests fail, you MUST:
+1. Investigate the failure — read the error output, understand what failed and why
+2. Attempt to fix the issue, as long as the fix does not change application behavior or weaken the test
+3. If you cannot fix it, or the fix would require changing how the application works or lowering test quality, **stop and report the failure to the user**
+
+This applies to ALL test failures — including tests that existed before your changes, tests that appear unrelated, and tests that fail intermittently. If a test fails, it is your problem to investigate and either fix or escalate. Never silently proceed past a failing test.
+
 ## Missing Tools and Browsers
 
 This container has system dependencies pre-installed, but user-space tools (like Playwright browsers) may need to be installed on first use. If a tool or browser is missing, install it rather than concluding it can't run. For example:

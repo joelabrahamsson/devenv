@@ -47,16 +47,18 @@ Work through each task in order. For each task (or group of closely related task
    - Read the plan file at `<plan-file-path>` and implement step N (specify which step number(s))
    - Read the project's CLAUDE.md / AGENTS.md for conventions and patterns
    - Follow strict TDD: RED (write failing tests) → RUN (confirm failure) → GREEN (minimal implementation) → RUN (confirm pass) → REFACTOR (if needed)
-   - Report back: what files were created/modified, what tests were added, whether all tests pass
+   - Report back: what files were created/modified, what tests were added, whether all tests pass, and the exact test command output (exit code and any failures)
+   - **Failing tests policy**: "Failing tests are NEVER acceptable. Do NOT dismiss any test failure as 'flaky', 'intermittent', or 'unrelated to my changes'. If ANY test fails, you must investigate and attempt to fix it. If you cannot fix it without changing application behavior or weakening the test, STOP and report the failure with the full test output. Never silently proceed past a failing test."
    - **If acceptance criteria exist**: "The following files are SPECIFICATION TESTS — human-owned and read-only. Do NOT modify them under any circumstances: `<list spec file paths>`. If your implementation contradicts a spec test (the test fails and you believe the test is wrong), STOP and report the conflict. Do not modify the spec test to make it pass."
 
    Also include in the prompt:
    - The test command to use (from the project's docs or inferred from the codebase)
    - A short list of files created/modified by previous steps (so the agent has context on what already exists)
 
-3. When the agent completes, review its summary. If it reports failing tests or issues:
-   - Try launching another Sonnet agent to fix the specific issue
-   - If it fails after 2 attempts, stop and ask the user for guidance via AskUserQuestion
+3. When the agent completes, review its summary. Verify test results — do NOT accept claims that failures are "flaky" or "unrelated". If any test failed:
+   - Try launching another Sonnet agent to fix the specific issue (include the full test output in its prompt)
+   - If it fails after 2 attempts, stop and ask the user for guidance via AskUserQuestion — include the exact test failure output
+   - Do NOT proceed to the next step while any test is failing, regardless of the agent's assessment of the failure's relevance
 
 4. Mark the task as `completed`
 
