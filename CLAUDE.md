@@ -59,6 +59,9 @@ dev <projectname>
 # then: gh auth login, claude /login
 ```
 
+**Recover from an ungraceful host shutdown (macOS upgrade, kernel panic, force-restart):**
+The DinD volume persists `/var/run`, so a stale `containerd.pid` can survive and block dockerd from starting (symptom: `failed to start containerd: ... process with PID N is still running`). Since the dev container shares the DinD network namespace, when DinD won't start, the dev container has no network and Claude Code reports `ConnectionRefused` against `api.anthropic.com`. The `dev` function clears stale pid files automatically before starting a stopped DinD, so usually `dev <project>` is enough. If you ever bypass `dev` (e.g. `podman start <project>-dind` directly) and hit this, run `dev <project>` to trigger the cleanup.
+
 ## User Details
 
 User identity (name, email) is stored in `~/.config/devenv/config`, created by `setup-mac.sh` on first run.

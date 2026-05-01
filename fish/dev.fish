@@ -278,6 +278,19 @@ function dev
         echo "  Use --rebuild to recreate with new port mappings."
     end
 
+    # Clean up stale DinD runtime state from an ungraceful previous shutdown.
+    # The DinD volume persists /var/run, so a stale containerd.pid blocks
+    # dockerd from starting next time with "process with PID N is still
+    # running". Triggered by host crashes or interrupted Podman VM shutdown
+    # (e.g. macOS upgrades). Only relevant when the DinD container already
+    # exists and is currently stopped.
+    if podman container exists $dind_name
+        if not podman ps --format '{{.Names}}' | grep -qx $dind_name
+            podman run --rm -v $dind_volume:/varrun docker.io/library/alpine:latest \
+                sh -c 'rm -f /varrun/docker/containerd/containerd.pid /varrun/docker.pid; rm -rf /varrun/docker/containerd/daemon/io.containerd.runtime.v2.task/moby/* 2>/dev/null; exit 0' >/dev/null 2>&1
+        end
+    end
+
     # Start both containers
     podman start $dind_name
     podman start $project
