@@ -32,7 +32,13 @@ IMPORTANT: This workflow is designed to flow without unnecessary permission prom
    - **Inner-loop test command** — the line specifying the targeted command for RED/GREEN/REFACTOR
    - **Step-grouping allowance** — the standard wording plus any explicit groupings the planner identified (e.g., *"Steps 5a–5d may be grouped"*)
 
-5. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
+5. Check the project's CLAUDE.md and AGENTS.md (in the workspace root) for a regression policy marker. Look for a line or section indicating the regression bar should be deferred to end-of-plan — the canonical phrasing is `Regression policy: defer to end-of-plan` (case-insensitive match is fine; equivalent phrasing in a "Regression Policy" section also counts). Record one of:
+   - **per-commit** (default — no marker found): subagents run the regression bar at each commit boundary, as the plan specifies.
+   - **deferred**: subagents run only inner-loop targeted tests at commits; the orchestrator runs the regression bar once at Step 5 (end of plan).
+
+   This selection changes how the Step 3 subagent prompt and the Step 4 boy scout prompt are constructed, and how Step 5 is framed. If the marker phrasing is ambiguous, ask the user which policy applies.
+
+6. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
 
 Then immediately proceed to Step 2. Do NOT read source code, types, components, or any other project files.
 
@@ -59,11 +65,13 @@ Work through each task in order. For each task (or group of closely related task
      ```
      <verbatim inner-loop test command line captured in Step 1>
      ```
-   - **Commit-boundary gate**: "At the commit boundary, run the regression bar specified in the plan's 'Implementation Approach' section (passed verbatim below). If the plan tiers gates by phase or commit category, follow that tiering. Do NOT impose a stricter bar than the plan specifies."
+   - **Commit-boundary gate** — the wording you include here depends on the regression policy captured in Step 1:
+     - If **per-commit policy** (default): "At the commit boundary, run the regression bar specified in the plan's 'Implementation Approach' section (passed verbatim below). If the plan tiers gates by phase or commit category, follow that tiering. Do NOT impose a stricter bar than the plan specifies."
 
-     ```
-     <verbatim regression-bar text captured in Step 1>
-     ```
+       ```
+       <verbatim regression-bar text captured in Step 1>
+       ```
+     - If **deferred policy**: "The full regression bar is DEFERRED to the orchestrator. After your inner-loop targeted tests pass green, commit and report back. Do NOT run the project's full test suite or any equivalent full-suite command at the commit boundary — the orchestrator will run the regression bar once at end-of-plan. The failing-tests policy still applies to your inner-loop runs: any failure during RED/GREEN/REFACTOR must be investigated, not dismissed."
    - **Grouping permission**: "If the plan's preamble explicitly permits grouping certain adjacent steps into a single commit (passed below), you may do so. Otherwise, one commit per step."
 
      ```
@@ -97,7 +105,9 @@ Once all tasks are complete, improve the code around the implementation before f
 
 2. Launch the `boyscout` agent with a prompt that includes:
    - The list of changed files
-   - The project's test command
+   - The test command — depends on the regression policy captured in Step 1:
+     - **per-commit policy**: pass the project's full test command; the boy scout runs it after its changes.
+     - **deferred policy**: pass only the inner-loop targeted test command, and tell the boy scout: "Run only targeted tests against the files you touch. Do NOT run the full project test suite — the orchestrator will run the full regression bar at end-of-plan."
    - Instruction to read the project's CLAUDE.md/AGENTS.md for conventions
 
 3. When the agent completes, review its summary. If it reports test failures it couldn't resolve, launch a Sonnet agent to fix, or revert the problematic boy scout changes.
@@ -105,6 +115,8 @@ Once all tasks are complete, improve the code around the implementation before f
 ## Step 5: Verification
 
 Run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps — including any changes made by the boy scout pass.
+
+If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 6 (Code Review).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test

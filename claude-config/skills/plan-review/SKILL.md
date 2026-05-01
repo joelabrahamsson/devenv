@@ -37,6 +37,8 @@ Start by reading the project's CLAUDE.md (and AGENTS.md, ONBOARDING.md if they e
 
 While reading the project's convention docs, look specifically for any section describing the project's regression-testing bar — tiered gates per phase or per commit category, or a strict "run everything on every commit" rule. Capture this text verbatim; it will be paraphrased or quoted into the generated plan's "Implementation Approach" section. If no such section exists, note that explicitly so the plan can use the documented strict default.
 
+If the convention docs also state a regression *policy* such as `Regression policy: defer to end-of-plan`, this affects when the bar runs (the implementer honors it) but NOT what the bar is. The plan stays implementation-agnostic — document the bar verbatim regardless of the deferral policy.
+
 **If a CLAUDE.md exists with architecture/structure information:**
 - Do NOT launch broad Explore agents to scan the entire codebase
 - Instead, use the information in CLAUDE.md to read the specific files and directories relevant to the task directly (using Read, Glob, Grep)
