@@ -21,7 +21,12 @@ Your role is ORCHESTRATOR. Do NOT explore the codebase or read source files your
 
 3. Identify the project's test command from AGENTS.md or CLAUDE.md (e.g., `npm test`, `pytest`). If not documented, ask the user.
 
-4. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
+4. Parse the plan's "Implementation Approach" section and capture three pieces of text verbatim. These will be passed verbatim into each implementation subagent's prompt — subagents shouldn't have to re-derive them:
+   - **Regression bar** — the project's tiered convention or the documented strict default
+   - **Inner-loop test command** — the line specifying the targeted command for RED/GREEN/REFACTOR
+   - **Step-grouping allowance** — the standard wording plus any explicit groupings the planner identified (e.g., *"Steps 5a–5d may be grouped"*)
+
+5. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
 
 Then immediately proceed to Step 2.
 
@@ -41,10 +46,24 @@ Work through each step in order. For each step (or group of closely related step
    - Follow strict TDD: RED (write failing tests) → RUN (confirm failure) → GREEN (minimal implementation) → RUN (confirm pass) → REFACTOR (if needed)
    - Do NOT spawn further subagents
    - Report back: what files were created/modified, what tests were added, whether all tests pass
+   - **Inner-loop test command**: "During RED/GREEN/REFACTOR, run targeted tests against the file(s) under change using the command captured from the plan (passed verbatim below). Do NOT run the project's full test suite for inner-loop verification."
+
+     ```
+     <verbatim inner-loop test command line captured in Step 1>
+     ```
+   - **Commit-boundary gate**: "At the commit boundary, run the regression bar specified in the plan's 'Implementation Approach' section (passed verbatim below). If the plan tiers gates by phase or commit category, follow that tiering. Do NOT impose a stricter bar than the plan specifies."
+
+     ```
+     <verbatim regression-bar text captured in Step 1>
+     ```
+   - **Grouping permission**: "If the plan's preamble explicitly permits grouping certain adjacent steps into a single commit (passed below), you may do so. Otherwise, one commit per step."
+
+     ```
+     <verbatim step-grouping allowance + any explicit groupings captured in Step 1>
+     ```
    - **If acceptance criteria exist**: "The following files are SPECIFICATION TESTS — human-owned and read-only. Do NOT modify them under any circumstances: `<list spec file paths>`. If your implementation contradicts a spec test (the test fails and you believe the test is wrong), STOP and report the conflict. Do not modify the spec test to make it pass."
 
    Also include:
-   - The test command to use
    - A short list of files created/modified by previous steps (context for the agent)
 
 3. Use `wait_agent` to collect the result. If it reports failing tests:
@@ -55,7 +74,7 @@ Work through each step in order. For each step (or group of closely related step
 
 5. Move to the next step only after the previous step's tests are confirmed green
 
-**Grouping steps:** Group 2-3 small, closely related steps into a single subagent call. Don't group more than 3 or steps that are conceptually independent.
+**Grouping steps:** Follow the grouping allowance and any explicit groupings the plan specifies in its "Implementation Approach" section. If the plan calls out specific steps as groupable, group them into a single subagent call; otherwise, do one step per call.
 
 ## Step 4: Verification
 

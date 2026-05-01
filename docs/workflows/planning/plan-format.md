@@ -8,8 +8,44 @@ Plans are written to `docs/plans/YYYY-MM-DD-short-description.md` — date plus 
 
 1. **Goal** — the original task description, including any refinements from user Q&A.
 
-2. **Implementation Approach** — include this exact reminder:
+2. **Implementation Approach** — must include all four items below (a–d). The planner is responsible for filling in the project-specific text for items b and c, and for identifying any grouping candidates in item d.
+
+   **a. TDD reminder** (include this exact text):
    > This plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test.
+
+   **b. Regression bar — inherited from the project.**
+   - If the project's `AGENTS.md` / `CLAUDE.md` documents a regression-testing convention (tiered gates per phase or per commit category, or a strict "run everything" rule), paraphrase or quote the relevant section verbatim into this plan. If tiering is documented, reflect it verbatim — do not flatten it into a stricter bar.
+   - If the project documents no convention, write: *"No project-level regression convention found; defaulting to running the full project test suite at every commit boundary."*
+
+   **c. Inner-loop test command** (project-agnostic phrasing, with a concrete command filled in by the planner):
+   > Inner-loop test command — during RED/GREEN/REFACTOR, run a targeted test command for the file(s) under change, not the project's full test suite. Reserve the full gate for the commit boundary.
+   >
+   > For this project, the targeted command is: `<concrete command, e.g. pnpm vitest run <path>, pytest <path>, cargo test --test <name>>`
+
+   The planner infers the concrete command from project tooling (`package.json` scripts, `pyproject.toml`, `Cargo.toml`, project convention docs).
+
+   **d. Step grouping allowance** (include this exact text):
+   > Step grouping — adjacent steps that share a single edit surface and can be implemented as one TDD cycle may be combined into one commit (one gate run instead of two or three). Group only when the steps share a coherent commit message; don't group across phases or unrelated decisions.
+
+   The planner identifies candidate groupings during plan generation and lists them explicitly at the end of the Implementation Approach section, e.g. *"Steps 5a–5d may be grouped into one commit."* If no groupings apply, write *"No step groupings identified."*
+
+   ### Rendered example of a fully populated Implementation Approach section
+
+   ```markdown
+   ## Implementation Approach
+
+   This plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test.
+
+   **Regression bar (inherited from AGENTS.md §"Test tiers"):**
+   > Run component tests on every commit. Run flow tests at the end of each phase. Run e2e only before opening the PR.
+
+   **Inner-loop test command** — during RED/GREEN/REFACTOR, run a targeted test command for the file(s) under change, not the project's full test suite. Reserve the full gate for the commit boundary.
+   For this project, the targeted command is: `pnpm vitest run <path>`
+
+   **Step grouping** — adjacent steps that share a single edit surface and can be implemented as one TDD cycle may be combined into one commit (one gate run instead of two or three). Group only when the steps share a coherent commit message; don't group across phases or unrelated decisions.
+
+   Candidate groupings: Steps 2a–2c (single new module, one TDD cycle).
+   ```
 
 3. **Implementation Steps** — each step that involves code changes MUST follow the TDD structure below.
 

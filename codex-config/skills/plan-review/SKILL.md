@@ -28,6 +28,8 @@ If no spec files are found in the arguments, proceed normally. The rest of this 
 
 Start by reading the project's AGENTS.md (and CLAUDE.md, ONBOARDING.md if they exist) in the workspace root. These describe the project's architecture, key directories, patterns, and conventions.
 
+While reading the convention docs, look specifically for any section describing the project's regression-testing bar — tiered gates per phase or per commit category, or a strict "run everything on every commit" rule. Capture this text verbatim; it will be paraphrased or quoted into the generated plan's "Implementation Approach" section. If no such section exists, note that explicitly so the plan can use the documented strict default.
+
 **If convention docs exist with architecture/structure information:**
 - Do NOT do broad codebase scans
 - Use the information in the docs to read the specific files and directories relevant to the task directly
@@ -40,6 +42,10 @@ Start by reading the project's AGENTS.md (and CLAUDE.md, ONBOARDING.md if they e
 
 - Ask the user clarifying questions as needed
 - Design a step-by-step implementation plan
+
+While designing the plan, also:
+- Determine the project's targeted (inner-loop) test command by inspecting tooling — `package.json` scripts, `pyproject.toml`, `Cargo.toml`, project convention docs, etc. This concrete command goes into the "Inner-loop test command" line of the Implementation Approach section.
+- Identify any adjacent steps that share a single edit surface and could be implemented as one TDD cycle / one commit. List them explicitly at the end of the Implementation Approach section (e.g., *"Steps 5a–5d may be grouped into one commit."*). If none, say so.
 
 ### When Acceptance Criteria Exist
 
@@ -54,6 +60,8 @@ The plan covers ALL the work needed — both satisfying the spec and any additio
 ### Plan Format and TDD Structure
 
 Read `~/workflows/planning/plan-format.md` for the required plan file format and TDD structure. Follow it exactly.
+
+The Implementation Approach section is required to include the regression bar (inherited from project convention docs or the documented strict default), the inner-loop test command, and the step-grouping allowance — see plan-format.md for the exact wording.
 
 Once the plan is complete, write it to the location specified in plan-format.md.
 
