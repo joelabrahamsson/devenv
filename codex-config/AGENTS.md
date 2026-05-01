@@ -49,6 +49,14 @@ docker compose exec postgres psql -U postgres -d mydb -c "\dt"
 
 **If an image is blocked**, ask the user to add it to the allowlist on the host. Do not attempt workarounds.
 
+## Secrets and Test Environments
+
+Project file contents you read — including `.env` values and command output — get sent to OpenAI as part of conversation context. The container sandbox protects the Mac; it does not prevent secrets inside `/workspace` from leaving in conversation context. Treat real credentials accordingly:
+
+- For tests, prefer a `.env.test` (or framework-equivalent) populated with dummy values, and configure the test runner to load it explicitly. Do not run tests against the project's real `.env` unless the user asks for it.
+- Never `cat`, `echo`, or otherwise print the contents of `.env`, `.env.*`, `*.pem`, `*.key`, or files under `secrets/` or `credentials/`. If you need to confirm a variable exists, check its name, not its value.
+- If a test fails with an error message that would dump a real connection string, API key, or token, stop and tell the user rather than re-running with more logging.
+
 ## Container Resources
 
 This container has 8 GB of memory and 4 CPUs. Do not artificially limit processes with flags like `--max-old-space-size=512`. Run builds, tests, and tools with their default memory settings — the container has plenty of headroom.
