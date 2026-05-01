@@ -325,7 +325,11 @@ function dev
     # Start the socket proxy if not already running (it stops on container restart).
     # The proxy listens on /var/run/docker.sock (accessible by dev user) and
     # forwards filtered requests to /var/run/docker-dind/docker.sock (root-only).
-    if not podman exec $project test -S /var/run/docker.sock 2>/dev/null
+    # Check the process, not the socket file — /var/run is on the container's
+    # overlay fs and the stale socket survives a stop/start even though the
+    # proxy process is gone, so a `test -S` check would falsely report it up.
+    if not podman exec $project pgrep -f docker-socket-proxy >/dev/null 2>&1
+        podman exec --user root $project rm -f /var/run/docker.sock
         podman exec --user root -d $project \
             env DOCKER_SOCKET_REAL=/var/run/docker-dind/docker.sock \
                 DOCKER_SOCKET_PROXY=/var/run/docker.sock \
@@ -333,8 +337,10 @@ function dev
         sleep 1
     end
 
-    # Start credential proxy if not already running
-    if not podman exec $project test -S /run/credential-proxy.sock 2>/dev/null
+    # Start credential proxy if not already running. Same caveat as above —
+    # check the process rather than the socket file.
+    if not podman exec $project pgrep -f credential-proxy >/dev/null 2>&1
+        podman exec --user root $project rm -f /run/credential-proxy.sock
         podman exec --user root -d $project \
             python3 /usr/local/bin/credential-proxy
     end
