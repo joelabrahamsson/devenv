@@ -179,6 +179,22 @@ Example pipeline with specs:
 
 Without specs, the pipeline works exactly as before — all spec-related behavior is opt-in.
 
+### Testing and regression policy
+
+Both `/implement-plan` and `$implement-plan` follow strict TDD: subagents run a *targeted* (inner-loop) test command during RED/GREEN/REFACTOR for fast feedback, and the *regression bar* (the project's full-suite gate) runs at commit boundaries. The plan inherits the regression bar verbatim from the project's CLAUDE.md / AGENTS.md, or uses a strict "run everything on every commit" default if none is documented.
+
+**Adjusting the bar.** The regression bar comes from your project's convention docs. To make it tiered (e.g., fast tests on every commit, e2e at end of phase), document the tiering in the project's CLAUDE.md or AGENTS.md — `/plan-review` and `$plan-review` capture it verbatim into the plan, and the implementer follows whatever the plan says.
+
+**Adjusting *when* the bar runs.** Projects with slow suites can opt out of per-commit gating by adding this line to CLAUDE.md or AGENTS.md:
+
+```
+Regression policy: defer to end-of-plan
+```
+
+When the marker is present, `/implement-plan` and `$implement-plan` skip the regression bar at every commit boundary; subagents run only the inner-loop targeted command. The orchestrator then runs the full regression bar exactly once at the end-of-plan verification step, before code review. This trades per-commit greenness for speed — useful when the suite takes minutes and the work spans many steps. Inner-loop failures are still never acceptable; only the *full-suite* run is deferred.
+
+Default behavior (per-commit gating) is unchanged for projects without the marker. If your workflow relies on `git bisect` against the regression bar across intermediate commits, do not opt in.
+
 ### Supporting components
 
 - **adversarial-reviewer** — reviews plans for completeness, TDD coverage, risk, spec awareness, and adherence to project conventions (Claude Code: named agent, Codex: subagent with `references/` instructions)

@@ -26,7 +26,13 @@ Your role is ORCHESTRATOR. Do NOT explore the codebase or read source files your
    - **Inner-loop test command** — the line specifying the targeted command for RED/GREEN/REFACTOR
    - **Step-grouping allowance** — the standard wording plus any explicit groupings the planner identified (e.g., *"Steps 5a–5d may be grouped"*)
 
-5. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
+5. Check the project's AGENTS.md and CLAUDE.md (in the workspace root) for a regression policy marker. Look for a line or section indicating the regression bar should be deferred to end-of-plan — the canonical phrasing is `Regression policy: defer to end-of-plan` (case-insensitive match is fine; equivalent phrasing in a "Regression Policy" section also counts). Record one of:
+   - **per-commit** (default — no marker found): subagents run the regression bar at each commit boundary, as the plan specifies.
+   - **deferred**: subagents run only inner-loop targeted tests at commits; the orchestrator runs the regression bar once at Step 4 (end of plan).
+
+   This selection changes how the Step 3 subagent prompt is constructed and how Step 4 is framed. If the marker phrasing is ambiguous, ask the user which policy applies.
+
+6. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
 
 Then immediately proceed to Step 2.
 
@@ -51,11 +57,13 @@ Work through each step in order. For each step (or group of closely related step
      ```
      <verbatim inner-loop test command line captured in Step 1>
      ```
-   - **Commit-boundary gate**: "At the commit boundary, run the regression bar specified in the plan's 'Implementation Approach' section (passed verbatim below). If the plan tiers gates by phase or commit category, follow that tiering. Do NOT impose a stricter bar than the plan specifies."
+   - **Commit-boundary gate** — the wording you include here depends on the regression policy captured in Step 1:
+     - If **per-commit policy** (default): "At the commit boundary, run the regression bar specified in the plan's 'Implementation Approach' section (passed verbatim below). If the plan tiers gates by phase or commit category, follow that tiering. Do NOT impose a stricter bar than the plan specifies."
 
-     ```
-     <verbatim regression-bar text captured in Step 1>
-     ```
+       ```
+       <verbatim regression-bar text captured in Step 1>
+       ```
+     - If **deferred policy**: "The full regression bar is DEFERRED to the orchestrator. After your inner-loop targeted tests pass green, commit and report back. Do NOT run the project's full test suite or any equivalent full-suite command at the commit boundary — the orchestrator will run the regression bar once at end-of-plan. Failing tests during RED/GREEN/REFACTOR are still never acceptable: investigate, do not dismiss."
    - **Grouping permission**: "If the plan's preamble explicitly permits grouping certain adjacent steps into a single commit (passed below), you may do so. Otherwise, one commit per step."
 
      ```
@@ -79,6 +87,8 @@ Work through each step in order. For each step (or group of closely related step
 ## Step 4: Verification
 
 Once all steps are complete, run the full test suite yourself (via `shell`) to confirm everything is green end-to-end.
+
+If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 5 (Code Review).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test
