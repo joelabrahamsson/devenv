@@ -28,9 +28,9 @@ Your role is ORCHESTRATOR. Do NOT explore the codebase or read source files your
 
 5. Check the project's AGENTS.md and CLAUDE.md (in the workspace root) for a regression policy marker. Look for a line or section indicating the regression bar should be deferred to end-of-plan — the canonical phrasing is `Regression policy: defer to end-of-plan` (case-insensitive match is fine; equivalent phrasing in a "Regression Policy" section also counts). Record one of:
    - **per-commit** (default — no marker found): subagents run the regression bar at each commit boundary, as the plan specifies.
-   - **deferred**: subagents run only inner-loop targeted tests at commits; the orchestrator runs the regression bar once at Step 4 (end of plan).
+   - **deferred**: subagents run only inner-loop targeted tests at commits; the orchestrator runs the regression bar once at Step 5 (end of plan).
 
-   This selection changes how the Step 3 subagent prompt is constructed and how Step 4 is framed. If the marker phrasing is ambiguous, ask the user which policy applies.
+   This selection changes how the Step 3 subagent prompt and the Step 4 boy-scout prompt are constructed, and how Step 5 is framed. If the marker phrasing is ambiguous, ask the user which policy applies.
 
 6. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
 
@@ -84,11 +84,34 @@ Work through each step in order. For each step (or group of closely related step
 
 **Grouping steps:** Follow the grouping allowance and any explicit groupings the plan specifies in its "Implementation Approach" section. If the plan calls out specific steps as groupable, group them into a single subagent call; otherwise, do one step per call.
 
-## Step 4: Verification
+## Step 4: Boy Scout Pass
 
-Once all steps are complete, run the full test suite yourself (via `shell`) to confirm everything is green end-to-end.
+Once all implementation steps are complete, improve the code around the implementation before final verification and review.
 
-If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 5 (Plan Conformance Audit).
+1. Get the list of files changed by the implementation:
+
+   ```bash
+   git diff --name-only HEAD
+   ```
+
+   (or `git diff --name-only` if changes are unstaged)
+
+2. Read `references/boyscout.md` for the subagent instructions template.
+
+3. Use `spawn_agent` with a prompt that includes:
+   - The instructions from the reference file
+   - The list of changed files
+   - The test command — depends on the regression policy captured in Step 1:
+     - **per-commit policy**: pass the project's full test command; the boy scout runs it after its changes.
+     - **deferred policy**: pass only the inner-loop targeted test command, and tell the boy scout: "Run only targeted tests against the files you touch. Do NOT run the full project test suite — the orchestrator will run the full regression bar at end-of-plan."
+
+4. Use `wait_agent` to collect the result. If it reports test failures it couldn't resolve, spawn another subagent to fix, or revert the problematic boy-scout changes via `git checkout -- <file>` before continuing.
+
+## Step 5: Verification
+
+Once the boy scout pass completes, run the full test suite yourself (via `shell`) to confirm everything is green end-to-end. This catches any issues between steps — including any changes made by the boy scout pass.
+
+If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 6 (Plan Conformance Audit).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test
@@ -97,7 +120,7 @@ If the project's regression policy is **deferred** (captured in Step 1), this is
 
 If tests fail, spawn a subagent to investigate and fix, providing the test output and relevant file paths.
 
-## Step 5: Plan Conformance Audit
+## Step 6: Plan Conformance Audit
 
 Before code review, verify that every concrete behavior the plan promised is actually delivered in the diff. Reviewers focused on code quality have repeatedly missed missing-promise cases — this is a dedicated, single-responsibility gate that runs first.
 
@@ -108,31 +131,31 @@ Before code review, verify that every concrete behavior the plan promised is act
    - The path to the plan file
 
 3. Use `wait_agent` to collect the result. Examine the verdict:
-   - **`pass`** — proceed to Step 6
+   - **`pass`** — proceed to Step 7
    - **`gaps`** — present the promise table and the Gaps section to the user. For each missing/partial item, decide with the user:
      - **Implement it** — spawn a subagent to deliver the missing behavior, then re-run the audit
      - **Defer it** — update the plan file to mark the promise as out of scope, then re-run the audit
      - **Acknowledge and proceed** — only if the user explicitly accepts the gap; note the decision so it can flow into the ADR or commit message
-   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this to the user and proceed to Step 6; do not re-run.
+   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this to the user and proceed to Step 7; do not re-run.
 
-   Do NOT proceed to Step 6 while the audit reports `gaps` unless the user has explicitly chosen to acknowledge each gap.
+   Do NOT proceed to Step 7 while the audit reports `gaps` unless the user has explicitly chosen to acknowledge each gap.
 
 4. Also surface any "Unpromised Additions" the audit listed. These are usually fine, but the user should see them — they may indicate scope creep that belongs in a separate change.
 
-## Step 6: Code Review
+## Step 7: Code Review
 
 Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews. Launch BOTH reviews simultaneously.
 
 Before launching, prepare the Copilot review prompt file (prerequisite for the shell call).
 
-### 6a: Codex Code Review Subagent
+### 7a: Codex Code Review Subagent
 
 Read `references/code-reviewer.md` for the subagent instructions template. Use `spawn_agent` with a prompt that includes:
 - The instructions from the reference file
 - The path to the plan file
 - **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
 
-### 6b: GitHub Copilot CLI Review (second opinion)
+### 7b: GitHub Copilot CLI Review (second opinion)
 
 Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
 - The path to the plan file — instruct copilot to read it using its `view` tool
@@ -155,7 +178,7 @@ Notes:
 - If the Codex subagent finishes first and copilot is still running, inform the user
 - If copilot times out, ask whether to proceed with only the Codex review or retry
 
-## Step 7: Consolidate and Fix
+## Step 8: Consolidate and Fix
 
 Once BOTH reviews are complete:
 1. Consolidate feedback — group by severity, deduplicate, note consensus and disagreements
@@ -166,7 +189,7 @@ Once BOTH reviews are complete:
    - **Ambiguous**: Present to user with your assessment and ask
 4. Run the full test suite again after fixes to confirm nothing broke
 
-## Step 8: Next Steps
+## Step 9: Next Steps
 
 All implementation and review is complete. Before presenting options, assess whether this implementation introduced decisions, patterns, or reasoning that would provide valuable context for future sessions. If so, suggest the `$finalize` option.
 
