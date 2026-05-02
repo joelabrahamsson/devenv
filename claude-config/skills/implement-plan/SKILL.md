@@ -116,7 +116,7 @@ Once all tasks are complete, improve the code around the implementation before f
 
 Run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps — including any changes made by the boy scout pass.
 
-If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 6 (Code Review).
+If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 6 (Plan Conformance Audit).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test
@@ -125,15 +125,44 @@ If the project's regression policy is **deferred** (captured in Step 1), this is
 
 If tests fail, launch a Sonnet agent to investigate and fix, providing it with the test output and relevant file paths.
 
-## Step 6: Code Review
+## Step 6: Plan Conformance Audit
 
-Once all tests pass, launch adversarial code reviews.
+Before code review, verify that every concrete behavior the plan promised is actually delivered in the diff. Reviewers focused on code quality have repeatedly missed missing-promise cases — this is a dedicated, single-responsibility gate that runs first.
+
+1. Capture the full diff of all changes:
+
+   ```bash
+   git diff HEAD
+   ```
+
+   (or `git diff` if changes are unstaged)
+
+2. Launch the `plan-conformance` agent with a prompt that includes:
+   - The path to the plan file — tell it to read the file itself
+   - The full git diff (the agent can't run git, so this must be in the prompt)
+   - A reminder to read `~/workflows/planning/plan-conformance-criteria.md` for the output format
+
+3. When the agent completes, examine its verdict:
+   - **`pass`** — proceed to Step 7
+   - **`gaps`** — present the promise table and the Gaps section to the user. For each missing/partial item, decide with the user:
+     - **Implement it** — launch a Sonnet agent to deliver the missing behavior, then re-run the audit
+     - **Defer it** — update the plan file to mark the promise as out of scope, then re-run the audit
+     - **Acknowledge and proceed** — only if the user explicitly accepts the gap; note the decision so it can flow into the ADR or commit message
+   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this to the user and proceed to Step 7; do not re-run.
+
+   Do NOT proceed to Step 7 while the audit reports `gaps` unless the user has explicitly chosen to acknowledge each gap.
+
+4. Also surface any "Unpromised Additions" the audit listed. These are usually fine, but the user should see them — they may indicate scope creep that belongs in a separate change.
+
+## Step 7: Code Review
+
+Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews.
 
 CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. Do NOT launch one, wait for it, then launch the other.
 
 Before launching, prepare the copilot prompt file (prerequisite for the Bash call).
 
-### 6a: Claude Code Review Agent
+### 7a: Claude Code Review Agent
 
 Launch the `code-reviewer` agent with a prompt that includes:
 - The path to the plan file — tell it to read the file itself
@@ -142,7 +171,7 @@ Launch the `code-reviewer` agent with a prompt that includes:
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read the plan and CLAUDE.md/AGENTS.md directly.
 
-### 6b: GitHub Copilot CLI Review
+### 7b: GitHub Copilot CLI Review
 
 Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
 - The path to the plan file — instruct copilot to read it with its `view` tool
@@ -165,7 +194,7 @@ Notes:
 - If the Claude review finishes first and copilot is still running, inform the user. If it's been more than 5 minutes, note that it's taking longer than expected.
 - If copilot times out after 15 minutes, ask the user whether to proceed with only the Claude review or retry.
 
-## Step 7: Consolidate and Fix
+## Step 8: Consolidate and Fix
 
 Once BOTH reviews are complete:
 1. Consolidate feedback — group by severity, deduplicate, note consensus and disagreements
@@ -176,7 +205,7 @@ Once BOTH reviews are complete:
    - **Ambiguous**: Present to user with your assessment and ask
 4. Run the full test suite again after fixes to confirm nothing broke
 
-## Step 8: Next Steps
+## Step 9: Next Steps
 
 All implementation and review is complete. Before presenting options, assess whether this implementation introduced decisions, patterns, or reasoning that would provide valuable context for future sessions (e.g., new architectural patterns, non-obvious trade-offs, convention changes). If so, suggest the `/finalize` option.
 

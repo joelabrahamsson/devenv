@@ -88,7 +88,7 @@ Work through each step in order. For each step (or group of closely related step
 
 Once all steps are complete, run the full test suite yourself (via `shell`) to confirm everything is green end-to-end.
 
-If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 5 (Code Review).
+If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 5 (Plan Conformance Audit).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
 - Do NOT attempt to fix by modifying the spec test
@@ -97,20 +97,42 @@ If the project's regression policy is **deferred** (captured in Step 1), this is
 
 If tests fail, spawn a subagent to investigate and fix, providing the test output and relevant file paths.
 
-## Step 5: Code Review
+## Step 5: Plan Conformance Audit
 
-Once all tests pass, launch adversarial code reviews. Launch BOTH reviews simultaneously.
+Before code review, verify that every concrete behavior the plan promised is actually delivered in the diff. Reviewers focused on code quality have repeatedly missed missing-promise cases — this is a dedicated, single-responsibility gate that runs first.
+
+1. Read `references/plan-conformance.md` for the subagent instructions template.
+
+2. Use `spawn_agent` with a prompt that includes:
+   - The instructions from the reference file
+   - The path to the plan file
+
+3. Use `wait_agent` to collect the result. Examine the verdict:
+   - **`pass`** — proceed to Step 6
+   - **`gaps`** — present the promise table and the Gaps section to the user. For each missing/partial item, decide with the user:
+     - **Implement it** — spawn a subagent to deliver the missing behavior, then re-run the audit
+     - **Defer it** — update the plan file to mark the promise as out of scope, then re-run the audit
+     - **Acknowledge and proceed** — only if the user explicitly accepts the gap; note the decision so it can flow into the ADR or commit message
+   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this to the user and proceed to Step 6; do not re-run.
+
+   Do NOT proceed to Step 6 while the audit reports `gaps` unless the user has explicitly chosen to acknowledge each gap.
+
+4. Also surface any "Unpromised Additions" the audit listed. These are usually fine, but the user should see them — they may indicate scope creep that belongs in a separate change.
+
+## Step 6: Code Review
+
+Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews. Launch BOTH reviews simultaneously.
 
 Before launching, prepare the Copilot review prompt file (prerequisite for the shell call).
 
-### 5a: Codex Code Review Subagent
+### 6a: Codex Code Review Subagent
 
 Read `references/code-reviewer.md` for the subagent instructions template. Use `spawn_agent` with a prompt that includes:
 - The instructions from the reference file
 - The path to the plan file
 - **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
 
-### 5b: GitHub Copilot CLI Review (second opinion)
+### 6b: GitHub Copilot CLI Review (second opinion)
 
 Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
 - The path to the plan file — instruct copilot to read it using its `view` tool
@@ -133,7 +155,7 @@ Notes:
 - If the Codex subagent finishes first and copilot is still running, inform the user
 - If copilot times out, ask whether to proceed with only the Codex review or retry
 
-## Step 6: Consolidate and Fix
+## Step 7: Consolidate and Fix
 
 Once BOTH reviews are complete:
 1. Consolidate feedback — group by severity, deduplicate, note consensus and disagreements
@@ -144,7 +166,7 @@ Once BOTH reviews are complete:
    - **Ambiguous**: Present to user with your assessment and ask
 4. Run the full test suite again after fixes to confirm nothing broke
 
-## Step 7: Next Steps
+## Step 8: Next Steps
 
 All implementation and review is complete. Before presenting options, assess whether this implementation introduced decisions, patterns, or reasoning that would provide valuable context for future sessions. If so, suggest the `$finalize` option.
 
