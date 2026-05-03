@@ -141,8 +141,9 @@ Before code review, verify that every concrete behavior the plan promised is act
    - The path to the plan file — tell it to read the file itself
    - The full git diff (the agent can't run git, so this must be in the prompt)
    - A reminder to read `~/workflows/planning/plan-conformance-criteria.md` for the output format
+   - **Output instruction**: "Write your full audit (promise table, gaps, unpromised additions, verdict) to `/tmp/plan-conformance-audit.md`. In your final message back to the orchestrator, return ONLY: the verdict (`pass` / `gaps` / `unscorable`), the count of gaps by severity, and the file path. Do NOT paste the full table or analysis into your final message — the orchestrator will read the file. This avoids subagent-result truncation."
 
-3. When the agent completes, examine its verdict:
+3. After the agent completes, read `/tmp/plan-conformance-audit.md` to get the full audit, then examine its verdict:
    - **`pass`** — proceed to Step 7
    - **`gaps`** — present the promise table and the Gaps section to the user. For each missing/partial item, decide with the user:
      - **Implement it** — launch a Sonnet agent to deliver the missing behavior, then re-run the audit
@@ -168,8 +169,11 @@ Launch the `code-reviewer` agent with a prompt that includes:
 - The path to the plan file — tell it to read the file itself
 - The full git diff of all changes (`git diff` for unstaged, or `git diff HEAD` if staged) — the agent can't run git, so this must be included in the prompt
 - **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
+- **Output instruction**: "Write your full review to `/tmp/claude-code-review.md`. In your final message back to the orchestrator, return ONLY: an overall verdict, finding counts by severity (critical/major/minor/nit), and the file path. Do NOT paste the full review into your final message — the orchestrator will read the file. This avoids subagent-result truncation on long reviews."
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read the plan and CLAUDE.md/AGENTS.md directly.
+
+After the agent finishes, read `/tmp/claude-code-review.md` to get the full review for consolidation in Step 8.
 
 ### 7b: GitHub Copilot CLI Review
 
