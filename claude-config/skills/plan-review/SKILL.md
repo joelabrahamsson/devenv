@@ -92,8 +92,11 @@ Launch the `adversarial-reviewer` agent with a prompt that includes:
 - The original goal/task description
 - The path to the plan file — tell it to read the file itself
 - The paths to CLAUDE.md / AGENTS.md if they exist — tell it to read them itself
+- **Output instruction**: "Write your full review to `/tmp/claude-plan-review.md` BEFORE returning. The file must include all findings grouped by severity (Critical / Suggested / Minor) and an overall verdict. In your final message back to the orchestrator, return ONLY: an overall verdict, finding counts by severity, and the file path. Do NOT paste the full review into your final message — the orchestrator will read the file. Treat writing the file as the completion gate: if you have not written it, you are not done."
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read files directly.
+
+After the agent finishes, read `/tmp/claude-plan-review.md` to get the full review for consolidation in Step 4. If the file does not exist or is clearly incomplete (e.g., no findings sections), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full review to /tmp/claude-plan-review.md. Complete the review and write the file before returning."
 
 ### 3b: GitHub Copilot CLI Review
 
