@@ -43,6 +43,12 @@ If the convention docs also state a regression *policy* such as `Regression poli
 ### 2b: Design the plan
 
 - Ask the user clarifying questions as needed
+- Before drafting the step-by-step plan, populate the plan's **Motivation & Context** section (see `~/workflows/planning/plan-format.md` for the field structure). Draw the content from the user's original request, conversation history, and clarifying-question answers. The four fields are:
+  - **Problem** — synthesize from what the user described.
+  - **Constraints** — extract hard requirements surfaced in conversation or in convention docs.
+  - **Alternatives considered** — list approaches discussed (including ones the user dismissed) and the reason for rejecting each. If alternatives weren't surfaced and the change is non-trivial, ask the user directly what other approaches they considered before drafting this field.
+  - **Decision rationale** — articulate why the chosen approach is correct given the problem, constraints, and alternatives.
+  If the change is genuinely trivial (typo, mechanical rename, dependency bump), the section may be a single italicized line per `plan-format.md`. Both adversarial reviewers will read the entire plan including this section, and **may critique the reasoning** as well as the steps — `~/workflows/planning/review-criteria.md` includes a dedicated Motivation & Context checklist.
 - Design a step-by-step implementation plan
 
 While designing the plan, also:
@@ -70,6 +76,8 @@ Once the plan is complete, write it to the location specified in plan-format.md.
 ⚠️ CRITICAL: Do NOT ask the user to review the plan. Do NOT present the plan for approval. You MUST complete Steps 3, 4, and 5 (adversarial reviews, consolidation, and revision) BEFORE presenting anything to the user. Tell the user the plan is written and you're now sending it for adversarial review, then immediately proceed to Step 3.
 
 ## Step 3: Parallel Adversarial Reviews
+
+**Pre-launch gate:** Before launching reviews, confirm the plan file contains a populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it. Do NOT launch the parallel reviews with an incomplete Motivation & Context section.
 
 CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the Claude CLI review in the same turn.
 
