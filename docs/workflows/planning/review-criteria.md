@@ -17,6 +17,12 @@ Evaluate the plan against ALL of the following criteria:
 - Does it use the correct testing patterns, file naming conventions, and architectural patterns?
 - Does it follow the project's established code organization?
 
+### Motivation & Context (the why)
+- Is the Motivation & Context section present and populated, or correctly marked trivial / `n/a` with justification? A missing or placeholder section is a critical issue — the plan won't survive `/clear` and `/finalize` will produce a thin ADR.
+- Are the listed Alternatives considered plausibly comprehensive given the problem? Are the rejection reasons substantive (one sentence beyond "we didn't pick this"), or is the section padding?
+- Is the Decision rationale grounded in the listed alternatives and constraints, or is it a restatement of the chosen approach? A rationale that doesn't reference at least one constraint or one rejected alternative is a red flag.
+- Do the Constraints listed actually shape the design? Constraints that have no visible influence on the chosen approach are likely fictional.
+
 ### Documentation
 - Does the plan include updates to documentation where needed?
 - If new patterns, APIs, or features are introduced, are docs planned?

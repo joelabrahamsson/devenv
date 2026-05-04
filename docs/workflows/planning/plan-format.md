@@ -8,7 +8,35 @@ Plans are written to `docs/plans/YYYY-MM-DD-short-description.md` — date plus 
 
 1. **Goal** — the original task description, including any refinements from user Q&A.
 
-2. **Implementation Approach** — must include all four items below (a–d). The planner is responsible for filling in the project-specific text for items b and c, and for identifying any grouping candidates in item d.
+2. **Motivation & Context** — captures the *why* behind the plan. Required, but allows escape hatches for trivial changes. The four fields:
+
+   - **Problem.** What's wrong or what need is being addressed. Synthesize from the user's request and conversation.
+   - **Constraints.** Hard requirements, deadlines, compatibility boundaries, security boundaries, regulatory limits — anything non-negotiable that shaped the design.
+   - **Alternatives considered.** Other approaches discussed (including ones the user dismissed) and the reason for rejecting each. If alternatives weren't surfaced in conversation and the change is non-trivial, ask the user before drafting this field.
+   - **Decision rationale.** Why this approach was chosen given the problem, constraints, and alternatives.
+
+   Each field is a bold inline label on its own paragraph. For trivial plans (typo fixes, mechanical renames, dependency bumps with no decision content), the entire section may be replaced by a single italicized line such as `*Trivial change — no significant motivation or alternatives.*` Each individual field may also be set to `n/a` with a one-line justification.
+
+   This section is the primary input that `/finalize` uses to populate the ADR's Context and Decision sections, and to decide whether an ADR is warranted at all. Adversarial reviewers will critique the reasoning here as well as the steps — see `~/workflows/planning/review-criteria.md`.
+
+   ### Rendered example of a populated Motivation & Context section
+
+   ```markdown
+   ## Motivation & Context
+
+   **Problem.** The build pipeline rebuilds the full asset graph on every commit, which has grown from 30s to 6 minutes as the project has grown. Developers run the full build locally before every push, so the slowdown compounds across the team.
+
+   **Constraints.** Cannot break the existing artifact paths — downstream deploy scripts hardcode them. Must keep the single-command entry point (`pnpm build`) for CI compatibility.
+
+   **Alternatives considered.**
+   1. *Switch bundlers entirely (esbuild → rspack).* Rejected: large migration, no measured wins for our specific shape of graph.
+   2. *Cache the full bundler output by content hash.* Rejected: doesn't help local rebuilds where the cache is cold.
+   3. *Incremental rebuilds keyed on changed entrypoints.* Chosen — addresses the actual slow path (most local rebuilds change 1-2 entrypoints) without changing tooling.
+
+   **Decision rationale.** Incremental rebuilds match how developers actually iterate (small file changes), preserve all artifact paths and CI surface, and avoid a high-risk bundler swap. The only trade-off is a one-time stamp file in the repo cache directory.
+   ```
+
+3. **Implementation Approach** — must include all four items below (a–d). The planner is responsible for filling in the project-specific text for items b and c, and for identifying any grouping candidates in item d.
 
    **a. TDD reminder** (include this exact text):
    > This plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test.
@@ -47,7 +75,7 @@ Plans are written to `docs/plans/YYYY-MM-DD-short-description.md` — date plus 
    Candidate groupings: Steps 2a–2c (single new module, one TDD cycle).
    ```
 
-3. **Implementation Steps** — each step that involves code changes MUST follow the TDD structure below.
+4. **Implementation Steps** — each step that involves code changes MUST follow the TDD structure below.
 
 ## TDD Step Structure
 
@@ -93,7 +121,7 @@ Step 3: Add the /api/tags endpoint
 
 ## Acceptance Criteria (Optional)
 
-When a plan is derived from specification tests (produced by `/bdd-spec`), include this section after the Goal:
+When a plan is derived from specification tests (produced by `/bdd-spec`), include this section after the Motivation & Context section (so the ordering is Goal → Motivation & Context → Acceptance Criteria → Implementation Approach → Implementation Steps):
 
 ```markdown
 ## Acceptance Criteria
