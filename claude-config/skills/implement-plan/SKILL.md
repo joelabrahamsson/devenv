@@ -213,6 +213,8 @@ Once BOTH reviews are complete:
 
 All implementation and review is complete. Before presenting options, assess whether this implementation introduced decisions, patterns, or reasoning that would provide valuable context for future sessions (e.g., new architectural patterns, non-obvious trade-offs, convention changes). If so, suggest the `/finalize` option.
 
+Note: `/finalize` itself now decides whether the implementation warrants an ADR (based on the plan's Motivation & Context section and the diff). Your assessment here is a hint — `/finalize` may second-guess it. Choosing `/finalize` doesn't commit you to producing an ADR; the skip path still ships the change with a richer commit message drawn from Motivation & Context.
+
 Determine the current git state:
 - What branch are we on?
 - Is it `main` or a feature branch?
@@ -222,7 +224,7 @@ Present options to the user, marking one as **(suggested)** based on your ADR as
 
 ### If an ADR would be valuable:
 
-1. Run `/finalize` to create an ADR, clean up, and commit/PR **(suggested)**
+1. Run `/finalize` — it will assess ADR worthiness, write one if warranted, and ship the change either way **(suggested)**
 2. Remove plan file + commit and push to current branch
 3. Remove plan file + create branch + push + create PR (if on main), or commit + push + create PR (if on branch)
 
@@ -230,7 +232,7 @@ Present options to the user, marking one as **(suggested)** based on your ADR as
 
 1. Remove plan file + commit and push to current branch
 2. Remove plan file + create branch + push + create PR (if on main), or commit + push + create PR (if on branch)
-3. Run `/finalize` if you'd like to create an ADR anyway
+3. Run `/finalize` if you want it to decide the ADR question for you (it may agree no ADR is needed, in which case it ships with a richer commit message)
 
 For options that remove the plan file, delete the plan file from `docs/plans/` and include that deletion in the commit.
 
