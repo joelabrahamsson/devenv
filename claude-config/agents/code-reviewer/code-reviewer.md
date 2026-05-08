@@ -3,7 +3,6 @@ name: code-reviewer
 description: Performs a thorough adversarial review of implemented code, focusing on bugs, security, test quality, and adherence to project conventions.
 tools: "Read, Grep, Glob, Bash, WebSearch, WebFetch"
 model: sonnet
-maxTurns: 30
 effort: high
 ---
 

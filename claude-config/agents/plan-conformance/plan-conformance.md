@@ -3,7 +3,6 @@ name: plan-conformance
 description: Audits an implementation against its plan, producing a promise-to-deliverable table. Flags missing or partial behaviors before code review and commit.
 tools: "Read, Grep, Glob, Bash"
 model: sonnet
-maxTurns: 20
 effort: high
 ---
 

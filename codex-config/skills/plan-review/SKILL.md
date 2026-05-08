@@ -1,6 +1,6 @@
 ---
 name: plan-review
-description: Create an implementation plan with adversarial review from both a Codex subagent and Claude CLI, then revise and optionally implement. Invoke with $plan-review followed by a description of what to plan.
+description: Create an implementation plan with adversarial review from both a Codex subagent and a configurable second-opinion CLI (Copilot or Claude), then revise and optionally implement. Invoke with $plan-review followed by a description of what to plan.
 ---
 
 # Plan with Adversarial Review
@@ -79,9 +79,9 @@ Once the plan is complete, write it to the location specified in plan-format.md.
 
 **Pre-launch gate:** Before launching reviews, confirm the plan file contains a populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it. Do NOT launch the parallel reviews with an incomplete Motivation & Context section.
 
-CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the Claude CLI review in the same turn.
+CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the second-opinion CLI in the same turn.
 
-Before launching, write the Copilot review prompt to a temporary file (prerequisite for the shell call).
+Before launching, write the second-opinion review prompt to a temporary file (prerequisite for the shell call).
 
 ### 3a: Codex Adversarial Subagent Review
 
@@ -90,27 +90,54 @@ Read `references/adversarial-reviewer.md` for the subagent instructions template
 - The original goal/task description
 - The path to the plan file
 
-### 3b: GitHub Copilot CLI Review (second opinion)
+### 3b: Second-opinion Reviewer (configurable via `$CODEX_REVIEWER`)
 
-Write the review prompt to a temporary file (e.g., `/tmp/copilot-plan-review-prompt.txt`). The prompt should contain:
+The second-opinion CLI is selected at container build time and is one of `copilot` or `claude`. The wrong one may not be installed — do NOT assume Copilot is available.
+
+**Pre-dispatch — read the env var first.** Use the `shell` tool to capture the value before doing anything else in this step:
+
+```
+echo "${CODEX_REVIEWER:-claude}"
+```
+
+Capture the result. Acceptable values are `copilot` or `claude`. If anything else, abort with: "CODEX_REVIEWER is set to an unsupported value. Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`." Treat the captured string as a known constant for the rest of this step.
+
+**Build the prompt file.** Write the review prompt to `/tmp/second-opinion-plan-review-prompt.txt`. The prompt content is reviewer-agnostic and should contain:
 - The original goal/task description (refined version after user Q&A)
-- The path to the plan file — instruct copilot to read it using its `view` tool
-- The paths to AGENTS.md and CLAUDE.md (if they exist) — instruct copilot to read them using its `view` tool
-- The path to `~/workflows/planning/review-criteria.md` — instruct copilot to read it for the review checklist
-- Do NOT paste file contents into the prompt — copilot has `view`, `glob`, and `rg` tools and should read files directly
+- The path to the plan file — instruct the reviewer to read it directly with its file-read tool
+- The paths to AGENTS.md and CLAUDE.md (if they exist) — instruct the reviewer to read them directly
+- Instruction to read `~/workflows/planning/review-criteria.md` for the full review checklist and output format
 
-Run Copilot CLI:
-```
-cd /workspace && copilot -p "$(cat /tmp/copilot-plan-review-prompt.txt)" \
-  --model sonnet \
-  --available-tools='view,glob,rg' \
-  --no-ask-user
-```
+Do NOT paste file contents into the prompt — the reviewer has its own file-read tools.
 
-Notes:
-- Run the copilot command in the background with a 15-minute timeout
-- If the Codex subagent review finishes first and copilot is still running, inform the user
-- If copilot times out after 15 minutes, inform the user and ask whether to proceed with only the Codex review or retry
+**Dispatch on the captured value.** Take exactly one of these branches:
+
+- **`copilot` branch** — run in the background with a 15-minute timeout:
+
+  ```
+  cd /workspace && copilot -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+    --model "$REVIEWER_COPILOT_MODEL" \
+    --available-tools='view,glob,rg' \
+    --no-ask-user
+  ```
+
+  `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env. Note: this differs from the previous behaviour, which hardcoded `--model sonnet` regardless of user preference; the configured model now applies.
+
+- **`claude` branch** — run in the background with a 15-minute timeout:
+
+  ```
+  cd /workspace && claude -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+    --output-format text \
+    --dangerously-skip-permissions \
+    --no-session-persistence \
+    --allowedTools "Read Glob Grep"
+  ```
+
+  `--no-session-persistence` keeps the inner Claude from writing a session file that could collide with an outer Claude Code session. `--allowedTools "Read Glob Grep"` constrains the inner Claude to read-only tools — the safety mitigation for `--dangerously-skip-permissions`. `--output-format text` ensures plain-text stdout suitable for capture.
+
+Notes (apply to both branches):
+- If the Codex subagent review (3a) finishes first and the second-opinion CLI is still running, inform the user.
+- If the second-opinion CLI times out after 15 minutes, inform the user and ask whether to proceed with only the Codex review or retry.
 
 ## Step 4: Consolidate Feedback
 

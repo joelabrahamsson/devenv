@@ -2,15 +2,21 @@
 
 These instructions apply to all projects inside the dev container.
 
-## Consulting GPT via Copilot CLI
+## Consulting an alternate model for a second opinion
 
-GitHub Copilot CLI is available in this container. When the user asks you to "consult with gpt", "ask gpt", "get a second opinion", or similar, use Copilot CLI to query GPT:
+A second-opinion CLI is installed in this container based on the user's reviewer configuration. The choice is exposed via two env vars: `$CLAUDE_REVIEWER` (`copilot` or `codex`) and `$REVIEWER_COPILOT_MODEL` (only meaningful when Copilot is the chosen reviewer). **Do not assume Copilot is available** — read `$CLAUDE_REVIEWER` first.
+
+When the user asks you to "consult with gpt", "ask gpt", "get a second opinion", or similar, dispatch based on the captured value:
 
 ```bash
-copilot -p "your prompt here" --allow-all
+# If $CLAUDE_REVIEWER is "copilot":
+copilot -p "your prompt here" --model "$REVIEWER_COPILOT_MODEL" --allow-all
+
+# If $CLAUDE_REVIEWER is "codex":
+codex exec --sandbox read-only "your prompt here"
 ```
 
-Pass relevant context (code snippets, file contents, diffs) directly in the prompt. Use this for code reviews, architecture feedback, debugging ideas, or any situation where a second opinion would be valuable.
+Pass relevant context (code snippets, file contents, diffs) directly in the prompt. Use this for code reviews, architecture feedback, debugging ideas, or any situation where a second opinion would be valuable. The reviewer can be reconfigured by running `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`.
 
 ## Bug Fix Workflow
 

@@ -37,7 +37,7 @@ Never skip step 2 before step 4 — the `dev` function must exist before a conta
 - The GitHub token is stored at `~/.config/devenv/tokens/<projectname>` on the Mac (not in the project directory).
 - The token is mounted to a root-only path inside the container. The agent cannot read it directly — git credentials are served via a credential proxy over a Unix socket.
 - The `gh` CLI is authenticated via `gh auth login` at container creation. Auth state is stored in `~/.config/gh/` inside the container — the raw token is never in the environment.
-- GitHub Copilot CLI is installed in the container image via npm (`@github/copilot`).
+- GitHub Copilot CLI and OpenAI Codex CLI are optionally installed via npm (`@github/copilot`, `@openai/codex`) — only the CLIs the user's reviewer configuration needs are present in the image. Scripts must not assume either binary exists; check `$CLAUDE_REVIEWER` / `$CODEX_REVIEWER` first.
 - Credentials (claude login) live inside the container and are lost if the container is removed.
 - Each project has its own DinD (Docker-in-Docker) sidecar with a fully isolated Docker daemon. Docker-compose services run inside DinD. `localhost:<port>` works normally. Multiple projects can run the same services on the same ports without collision.
 
@@ -58,6 +58,9 @@ podman rm -f <projectname>
 dev <projectname>
 # then: gh auth login, claude /login
 ```
+
+**Change which reviewer the planning skills use:**
+Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild` to recreate the container with the matching CLI installed. The selection persists in `~/.config/devenv/config` (keys: `CLAUDE_REVIEWER`, `CODEX_REVIEWER`, `REVIEWER_COPILOT_MODEL`).
 
 **Recover from an ungraceful host shutdown (macOS upgrade, kernel panic, force-restart):**
 The DinD volume persists `/var/run`, so a stale `containerd.pid` can survive and block dockerd from starting (symptom: `failed to start containerd: ... process with PID N is still running`). Since the dev container shares the DinD network namespace, when DinD won't start, the dev container has no network and Claude Code reports `ConnectionRefused` against `api.anthropic.com`. The `dev` function clears stale pid files automatically before starting a stopped DinD, so usually `dev <project>` is enough. If you ever bypass `dev` (e.g. `podman start <project>-dind` directly) and hit this, run `dev <project>` to trigger the cleanup.

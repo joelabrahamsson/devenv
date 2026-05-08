@@ -3,7 +3,6 @@ name: adversarial-reviewer
 description: Performs a thorough adversarial review of implementation plans, challenging assumptions, identifying gaps, and suggesting improvements.
 tools: "Read, Grep, Glob, Bash, WebSearch, WebFetch"
 model: sonnet
-maxTurns: 30
 effort: high
 ---
 

@@ -12,6 +12,22 @@ When fixing bugs, follow a TDD red-green workflow by default:
 
 Do not skip the failing test step. The test proves the bug exists and prevents regressions. Only skip this workflow if the user explicitly asks to, or if the bug is in code that has no test infrastructure.
 
+## Consulting an alternate model for a second opinion
+
+A second-opinion CLI is installed in this container based on the user's reviewer configuration. The choice is exposed via two env vars: `$CODEX_REVIEWER` (`copilot` or `claude`) and `$REVIEWER_COPILOT_MODEL` (only meaningful when Copilot is the chosen reviewer). **Do not assume Copilot is available** — read `$CODEX_REVIEWER` first.
+
+When the user asks for a second opinion, dispatch based on the captured value:
+
+```bash
+# If $CODEX_REVIEWER is "copilot":
+copilot -p "your prompt here" --model "$REVIEWER_COPILOT_MODEL" --allow-all
+
+# If $CODEX_REVIEWER is "claude":
+claude -p "your prompt here" --dangerously-skip-permissions --no-session-persistence
+```
+
+The reviewer can be reconfigured by running `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`.
+
 ## Missing Tools and Browsers
 
 This container has system dependencies pre-installed, but user-space tools (like Playwright browsers) may need to be installed on first use. If a tool or browser is missing, install it rather than concluding it can't run. For example:

@@ -40,8 +40,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # pnpm + yarn (so projects using any package manager work out of the box)
 RUN npm install -g pnpm yarn
 
-# GitHub Copilot CLI + OpenAI Codex CLI
-RUN npm install -g @github/copilot @openai/codex
+# GitHub Copilot CLI + OpenAI Codex CLI — installation is gated on build args
+# so a personal-use image can omit Copilot, and an org image can omit Codex.
+# Defaults stay 1 so a manual `podman build` (no args) preserves current behaviour.
+ARG INSTALL_COPILOT=1
+ARG INSTALL_CODEX=1
+RUN if [ "$INSTALL_COPILOT" = "1" ]; then npm install -g @github/copilot; fi && \
+    if [ "$INSTALL_CODEX" = "1" ]; then npm install -g @openai/codex; fi
 
 # Docker Compose — installed as docker-compose-real.
 # The allowlist wrapper (mounted from Mac at /etc/docker-allowlist) is

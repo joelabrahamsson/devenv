@@ -3,7 +3,6 @@ name: boyscout
 description: Analyzes files touched by an implementation and their immediate neighbors, then applies small quality improvements — dead code removal, stale comments, naming fixes, and minor refactors.
 tools: "Read, Grep, Glob, Bash, Edit"
 model: sonnet
-maxTurns: 30
 effort: medium
 ---
 

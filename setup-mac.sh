@@ -1,10 +1,20 @@
 #!/bin/bash
 # setup-mac.sh
 # One-time setup for a new Mac. Safe to run multiple times (idempotent).
+#
+# Flags:
+#   --reconfigure-reviewers   Clear and re-prompt for the reviewer configuration
+#                             (CLAUDE_REVIEWER, CODEX_REVIEWER, REVIEWER_COPILOT_MODEL)
+#                             stored in ~/.config/devenv/config.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+RECONFIGURE_REVIEWERS=0
+case " $* " in
+    *" --reconfigure-reviewers "*) RECONFIGURE_REVIEWERS=1 ;;
+esac
 
 echo "==> Checking prerequisites..."
 
@@ -76,6 +86,108 @@ else
     echo "DEVENV_USER_NAME=$user_name" > "$DEVENV_CONFIG"
     echo "DEVENV_USER_EMAIL=$user_email" >> "$DEVENV_CONFIG"
     echo "    Saved to $DEVENV_CONFIG"
+fi
+
+echo "==> Configuring reviewer..."
+# If --reconfigure-reviewers was passed, strip any existing reviewer keys so the
+# missing-key path below re-prompts. Use a same-directory temp file so the rename
+# is intra-filesystem and atomic (mv across filesystems falls back to copy+delete).
+if [ "$RECONFIGURE_REVIEWERS" -eq 1 ] && [ -f "$DEVENV_CONFIG" ]; then
+    tmp_config=$(mktemp "$DEVENV_CONFIG_DIR/.config.XXXXXXXX")
+    grep -v -E '^(CLAUDE_REVIEWER|CODEX_REVIEWER|REVIEWER_COPILOT_MODEL)=' \
+        "$DEVENV_CONFIG" > "$tmp_config" || true
+    mv "$tmp_config" "$DEVENV_CONFIG"
+    echo "    Cleared existing reviewer keys"
+fi
+
+# Multi-pass key-presence check:
+#   - CLAUDE_REVIEWER and CODEX_REVIEWER are always required.
+#   - REVIEWER_COPILOT_MODEL is required only if either reviewer is "copilot".
+existing_claude_reviewer=""
+existing_codex_reviewer=""
+existing_copilot_model=""
+if [ -f "$DEVENV_CONFIG" ]; then
+    existing_claude_reviewer=$(grep '^CLAUDE_REVIEWER=' "$DEVENV_CONFIG" | head -n1 | cut -d= -f2-)
+    existing_codex_reviewer=$(grep '^CODEX_REVIEWER=' "$DEVENV_CONFIG" | head -n1 | cut -d= -f2-)
+    existing_copilot_model=$(grep '^REVIEWER_COPILOT_MODEL=' "$DEVENV_CONFIG" | head -n1 | cut -d= -f2-)
+fi
+
+needs_copilot_model=0
+if [ "$existing_claude_reviewer" = "copilot" ] || [ "$existing_codex_reviewer" = "copilot" ]; then
+    needs_copilot_model=1
+fi
+
+reviewer_config_complete=0
+if [ -n "$existing_claude_reviewer" ] && [ -n "$existing_codex_reviewer" ]; then
+    if [ "$needs_copilot_model" -eq 0 ] || [ -n "$existing_copilot_model" ]; then
+        reviewer_config_complete=1
+    fi
+fi
+
+if [ "$reviewer_config_complete" -eq 1 ]; then
+    echo "    Reviewer config already set, skipping."
+    CLAUDE_REVIEWER="$existing_claude_reviewer"
+    CODEX_REVIEWER="$existing_codex_reviewer"
+    REVIEWER_COPILOT_MODEL="$existing_copilot_model"
+else
+    # Prompt for any missing keys. Empty input takes the default.
+    if [ -n "$existing_claude_reviewer" ]; then
+        CLAUDE_REVIEWER="$existing_claude_reviewer"
+    else
+        while true; do
+            read -p "Reviewer for Claude Code skills (plan-review / implement-plan)? [codex/copilot] (default: codex): " ans
+            ans=${ans:-codex}
+            case "$ans" in
+                codex|copilot) CLAUDE_REVIEWER="$ans"; break ;;
+                *) echo "    Please enter 'codex' or 'copilot'." ;;
+            esac
+        done
+    fi
+
+    if [ -n "$existing_codex_reviewer" ]; then
+        CODEX_REVIEWER="$existing_codex_reviewer"
+    else
+        while true; do
+            read -p "Reviewer for Codex skills (plan-review / implement-plan)? [claude/copilot] (default: claude): " ans
+            ans=${ans:-claude}
+            case "$ans" in
+                claude|copilot) CODEX_REVIEWER="$ans"; break ;;
+                *) echo "    Please enter 'claude' or 'copilot'." ;;
+            esac
+        done
+    fi
+
+    REVIEWER_COPILOT_MODEL=""
+    if [ "$CLAUDE_REVIEWER" = "copilot" ] || [ "$CODEX_REVIEWER" = "copilot" ]; then
+        if [ -n "$existing_copilot_model" ]; then
+            REVIEWER_COPILOT_MODEL="$existing_copilot_model"
+        else
+            while true; do
+                read -p "Copilot model to use for reviews? [gpt-5.4/gpt-5.3-codex/gpt-5.2] (default: gpt-5.4): " ans
+                ans=${ans:-gpt-5.4}
+                case "$ans" in
+                    gpt-5.4|gpt-5.3-codex|gpt-5.2) REVIEWER_COPILOT_MODEL="$ans"; break ;;
+                    *) echo "    Please enter one of: gpt-5.4, gpt-5.3-codex, gpt-5.2." ;;
+                esac
+            done
+        fi
+    fi
+
+    # Persist via temp-file-and-mv: drop any stale reviewer keys, then append the new ones.
+    tmp_config=$(mktemp "$DEVENV_CONFIG_DIR/.config.XXXXXXXX")
+    if [ -f "$DEVENV_CONFIG" ]; then
+        grep -v -E '^(CLAUDE_REVIEWER|CODEX_REVIEWER|REVIEWER_COPILOT_MODEL)=' \
+            "$DEVENV_CONFIG" > "$tmp_config" || true
+    fi
+    {
+        echo "CLAUDE_REVIEWER=$CLAUDE_REVIEWER"
+        echo "CODEX_REVIEWER=$CODEX_REVIEWER"
+        if [ -n "$REVIEWER_COPILOT_MODEL" ]; then
+            echo "REVIEWER_COPILOT_MODEL=$REVIEWER_COPILOT_MODEL"
+        fi
+    } >> "$tmp_config"
+    mv "$tmp_config" "$DEVENV_CONFIG"
+    echo "    Saved reviewer config to $DEVENV_CONFIG"
 fi
 
 echo "==> Installing dev function into fish config..."
@@ -177,7 +289,22 @@ else
 fi
 
 echo "==> Building container image..."
-podman build -t devenv -f "$SCRIPT_DIR/Dockerfile.dev" "$SCRIPT_DIR"
+INSTALL_COPILOT=0
+INSTALL_CODEX=0
+if [ "$CLAUDE_REVIEWER" = "copilot" ] || [ "$CODEX_REVIEWER" = "copilot" ]; then
+    INSTALL_COPILOT=1
+fi
+# Codex CLI is needed only on the Claude side (where the dispatch path runs
+# `codex exec`). The Codex-side skills invoke `claude`, not `codex`, so
+# CODEX_REVIEWER=claude does NOT require the Codex CLI to be installed.
+if [ "$CLAUDE_REVIEWER" = "codex" ]; then
+    INSTALL_CODEX=1
+fi
+echo "    Build args: INSTALL_COPILOT=$INSTALL_COPILOT INSTALL_CODEX=$INSTALL_CODEX"
+podman build \
+    --build-arg INSTALL_COPILOT="$INSTALL_COPILOT" \
+    --build-arg INSTALL_CODEX="$INSTALL_CODEX" \
+    -t devenv -f "$SCRIPT_DIR/Dockerfile.dev" "$SCRIPT_DIR"
 
 echo ""
 echo "✓ Mac setup complete."

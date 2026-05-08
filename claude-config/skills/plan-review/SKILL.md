@@ -1,6 +1,6 @@
 ---
 name: plan-review
-description: Create an implementation plan with adversarial review from both a Claude agent and GitHub Copilot CLI, then revise and optionally implement.
+description: Create an implementation plan with adversarial review from both a Claude agent and a configurable second-opinion CLI (Copilot or Codex), then revise and optionally implement.
 argument-hint: "[description of what to plan]"
 user-invocable: true
 allowed-tools: "Write Edit Read Glob Grep Bash Agent AskUserQuestion"
@@ -10,7 +10,7 @@ allowed-tools: "Write Edit Read Glob Grep Bash Agent AskUserQuestion"
 
 You are orchestrating a planning workflow with adversarial review. Follow these steps precisely.
 
-IMPORTANT: This workflow is designed to flow without unnecessary permission prompts. The tools listed in `allowed-tools` above are pre-authorized — use them without hesitation. Do NOT ask the user for confirmation before writing the plan file, running copilot, launching the adversarial agent, or updating the plan file. The user will review the plan after the adversarial reviews are complete.
+IMPORTANT: This workflow is designed to flow without unnecessary permission prompts. The tools listed in `allowed-tools` above are pre-authorized — use them without hesitation. Do NOT ask the user for confirmation before writing the plan file, running the second-opinion CLI, launching the adversarial agent, or updating the plan file. The user will review the plan after the adversarial reviews are complete.
 
 ## Step 1: Establish the Task
 
@@ -90,9 +90,9 @@ Once the plan is complete, write it to the location and format specified in plan
 
 **Pre-launch gate:** Before launching reviews, confirm the plan file contains a populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it. Do NOT launch the parallel reviews with an incomplete Motivation & Context section.
 
-CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. This means sending a single response that contains both an Agent tool call and a Bash tool call. Do NOT launch one, wait for it to finish, then launch the other.
+CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. This means sending a single response that contains both an Agent tool call and a Bash tool call (one Agent for Step 3a, one Bash invoking the dispatched second-opinion CLI for Step 3b). Do NOT launch one, wait for it to finish, then launch the other.
 
-Before launching the reviews, write the copilot prompt to a temporary file first (this is a prerequisite for the Bash call). Then, in a single message, launch both:
+Before launching the reviews, write the second-opinion prompt to a temporary file first (this is a prerequisite for the Bash call). Then, in a single message, launch both:
 
 ### 3a: Claude Adversarial Agent Review
 
@@ -106,34 +106,53 @@ Do NOT paste the plan contents into the agent prompt. The agent has read tools a
 
 After the agent finishes, read `/tmp/claude-plan-review.md` to get the full review for consolidation in Step 4. If the file does not exist or is clearly incomplete (e.g., no findings sections), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full review to /tmp/claude-plan-review.md. Complete the review and write the file before returning."
 
-### 3b: GitHub Copilot CLI Review
+### 3b: Second-opinion Reviewer (configurable via `$CLAUDE_REVIEWER`)
 
-Run the copilot CLI in non-interactive mode using Bash.
+The second-opinion CLI is selected at container build time and is one of `copilot` or `codex`. The wrong one is not installed — do NOT assume Copilot is available.
 
-**Building the prompt (do this BEFORE launching the parallel reviews):** Write the review prompt to a temporary file (e.g., `/tmp/copilot-plan-review-prompt.txt`) to avoid shell argument length limits. The prompt should contain:
+**Pre-dispatch — read the env var first.** Markdown prose cannot branch on a shell variable on its own. Issue a Bash call to capture the value before doing anything else in this step:
+
+```
+echo "${CLAUDE_REVIEWER:-codex}"
+```
+
+Capture the result. Acceptable values are `copilot` or `codex`. If the captured value is anything else, abort the workflow with this message: "CLAUDE_REVIEWER is set to an unsupported value. Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`." Treat the captured string as a known constant for the rest of this step — do not refer to `$CLAUDE_REVIEWER` in any later prose; refer to "the captured reviewer" instead.
+
+**Build the prompt file (do this BEFORE launching the parallel reviews):** Write the review prompt to `/tmp/second-opinion-plan-review-prompt.txt` to avoid shell argument length limits. The prompt content is reviewer-agnostic and should contain:
 - The original goal/task description (refined version after user Q&A)
-- The path to the plan file — instruct copilot to read it using its `view` tool
-- The paths to CLAUDE.md and AGENTS.md (if they exist) — instruct copilot to read them using its `view` tool
-- Review instructions (see below)
+- The path to the plan file — instruct the reviewer to read it directly with its file-read tool
+- The paths to CLAUDE.md and AGENTS.md (if they exist) — instruct the reviewer to read them directly
+- Instruction to read `~/workflows/planning/review-criteria.md` for the full review checklist and output format, then perform the review following those criteria exactly
 
-Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — copilot has `view`, `glob`, and `rg` tools and should read files directly. This keeps the prompt small.
+Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — the reviewer has its own file-read tools.
 
-The prompt must instruct copilot to read `~/workflows/planning/review-criteria.md` for the full review checklist and output format, then perform the review following those criteria exactly.
+**Dispatch on the captured value.** Take exactly one of these branches:
 
-**Running copilot:** Use the following command pattern:
-```
-cd /workspace && copilot -p "$(cat /tmp/copilot-plan-review-prompt.txt)" \
-  --model gpt-5.4 \
-  --available-tools='view,glob,rg' \
-  --no-ask-user
-```
+- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes):
 
-Notes:
-- `--available-tools='view,glob,rg'` restricts copilot to read-only tools, keeping the review focused and faster
-- `--no-ask-user` ensures copilot works autonomously without trying to ask questions
-- Run the copilot command in the background using `run_in_background: true` with a Bash timeout of 900000ms (15 minutes)
-- Since copilot runs in the background, you will be notified when it completes. If the adversarial agent review finishes first and copilot is still running, inform the user that the Claude review is done and copilot is still working. If copilot has been running for more than 5 minutes when the agent review finishes, let the user know it's taking longer than expected but is still in progress.
-- If copilot times out after 15 minutes, inform the user and ask whether they want to proceed with only the Claude adversarial review or retry the copilot review.
+  ```
+  cd /workspace && copilot -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+    --model "$REVIEWER_COPILOT_MODEL" \
+    --available-tools='view,glob,rg' \
+    --no-ask-user
+  ```
+
+  `--available-tools='view,glob,rg'` restricts Copilot to read-only tools. `--no-ask-user` makes it work autonomously. `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env.
+
+- **`codex` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms):
+
+  ```
+  cd /workspace && codex exec \
+    --sandbox read-only \
+    --skip-git-repo-check \
+    "$(cat /tmp/second-opinion-plan-review-prompt.txt)"
+  ```
+
+  `--sandbox read-only` is the parallel of Copilot's `--available-tools='view,glob,rg'` — it limits Codex to read-only filesystem operations. `--skip-git-repo-check` is precautionary. The existing `approval_policy = "never"` in `~/.codex/config.toml` already suppresses confirmation prompts.
+
+Notes (apply to both branches):
+- The second-opinion CLI runs in the background. You will be notified when it completes. If the adversarial agent review (3a) finishes first and the second-opinion CLI is still running, inform the user that the Claude review is done and the second opinion is still in progress. If it has been running for more than 5 minutes when the agent review finishes, let the user know it's taking longer than expected but is still in progress.
+- If the second-opinion CLI times out after 15 minutes, inform the user and ask whether they want to proceed with only the Claude adversarial review or retry.
 
 ## Step 4: Consolidate Feedback
 

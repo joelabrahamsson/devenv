@@ -159,9 +159,9 @@ Before code review, verify that every concrete behavior the plan promised is act
 
 Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews.
 
-CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. Do NOT launch one, wait for it, then launch the other.
+CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls (one Agent for Step 7a, one Bash invoking the dispatched second-opinion CLI for Step 7b). Do NOT launch one, wait for it, then launch the other.
 
-Before launching, prepare the copilot prompt file (prerequisite for the Bash call).
+Before launching, prepare the second-opinion prompt file (prerequisite for the Bash call).
 
 ### 7a: Claude Code Review Agent
 
@@ -175,28 +175,49 @@ Do NOT paste the plan contents into the agent prompt. The agent has read tools a
 
 After the agent finishes, read `/tmp/claude-code-review.md` to get the full review for consolidation in Step 8.
 
-### 7b: GitHub Copilot CLI Review
+### 7b: Second-opinion Reviewer (configurable via `$CLAUDE_REVIEWER`)
 
-Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
-- The path to the plan file — instruct copilot to read it with its `view` tool
-- The full git diff (copilot can't run git, so this must be in the prompt)
-- The paths to CLAUDE.md and AGENTS.md — instruct copilot to read them with its `view` tool
-- Instruct copilot to read `~/workflows/planning/code-review-criteria.md` for the full review checklist and output format
+The second-opinion CLI is selected at container build time and is one of `copilot` or `codex`. The wrong one is not installed — do NOT assume Copilot is available.
 
-Do NOT paste the plan or CLAUDE.md/AGENTS.md contents into the prompt — copilot should read them directly.
+**Pre-dispatch — read the env var first.** Issue a Bash call to capture the value before doing anything else in this step:
 
-Run copilot:
 ```
-cd /workspace && copilot -p "$(cat /tmp/copilot-code-review-prompt.txt)" \
-  --model gpt-5.4 \
-  --available-tools='view,glob,rg' \
-  --no-ask-user
+echo "${CLAUDE_REVIEWER:-codex}"
 ```
 
-Notes:
-- Run copilot in the background using `run_in_background: true` with a Bash timeout of 900000ms (15 minutes)
-- If the Claude review finishes first and copilot is still running, inform the user. If it's been more than 5 minutes, note that it's taking longer than expected.
-- If copilot times out after 15 minutes, ask the user whether to proceed with only the Claude review or retry.
+Capture the result. Acceptable values are `copilot` or `codex`. If anything else, abort with: "CLAUDE_REVIEWER is set to an unsupported value. Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`." Treat the captured string as a known constant for the rest of this step.
+
+**Build the prompt file.** Write the review prompt to `/tmp/second-opinion-code-review-prompt.txt`. Include:
+- The path to the plan file — instruct the reviewer to read it with its file-read tool
+- The full git diff (the reviewer can't run git, so this must be in the prompt)
+- The paths to CLAUDE.md and AGENTS.md — instruct the reviewer to read them with its file-read tool
+- Instruct the reviewer to read `~/workflows/planning/code-review-criteria.md` for the full review checklist and output format
+
+Do NOT paste the plan or CLAUDE.md/AGENTS.md contents into the prompt — the reviewer has its own file-read tools.
+
+**Dispatch on the captured value.** Take exactly one of these branches:
+
+- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes):
+
+  ```
+  cd /workspace && copilot -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+    --model "$REVIEWER_COPILOT_MODEL" \
+    --available-tools='view,glob,rg' \
+    --no-ask-user
+  ```
+
+- **`codex` branch** — run in the background (same `run_in_background` and timeout):
+
+  ```
+  cd /workspace && codex exec \
+    --sandbox read-only \
+    --skip-git-repo-check \
+    "$(cat /tmp/second-opinion-code-review-prompt.txt)"
+  ```
+
+Notes (apply to both branches):
+- If the Claude review (7a) finishes first and the second-opinion CLI is still running, inform the user. If it's been more than 5 minutes, note that it's taking longer than expected.
+- If the second-opinion CLI times out after 15 minutes, ask the user whether to proceed with only the Claude review or retry.
 
 ## Step 8: Consolidate and Fix
 

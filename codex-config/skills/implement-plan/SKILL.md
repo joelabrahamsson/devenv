@@ -146,7 +146,7 @@ Before code review, verify that every concrete behavior the plan promised is act
 
 Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews. Launch BOTH reviews simultaneously.
 
-Before launching, prepare the Copilot review prompt file (prerequisite for the shell call).
+Before launching, prepare the second-opinion review prompt file (prerequisite for the shell call).
 
 ### 7a: Codex Code Review Subagent
 
@@ -155,28 +155,52 @@ Read `references/code-reviewer.md` for the subagent instructions template. Use `
 - The path to the plan file
 - **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
 
-### 7b: GitHub Copilot CLI Review (second opinion)
+### 7b: Second-opinion Reviewer (configurable via `$CODEX_REVIEWER`)
 
-Write the review prompt to `/tmp/copilot-code-review-prompt.txt`. Include:
-- The path to the plan file — instruct copilot to read it using its `view` tool
-- The full git diff (copilot can't run git, so the diff must be in the prompt)
+The second-opinion CLI is selected at container build time and is one of `copilot` or `claude`. The wrong one may not be installed — do NOT assume Copilot is available.
+
+**Pre-dispatch — read the env var first.** Use the `shell` tool to capture the value before doing anything else in this step:
+
+```
+echo "${CODEX_REVIEWER:-claude}"
+```
+
+Capture the result. Acceptable values are `copilot` or `claude`. If anything else, abort with: "CODEX_REVIEWER is set to an unsupported value. Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild`." Treat the captured string as a known constant for the rest of this step.
+
+**Build the prompt file.** Write the review prompt to `/tmp/second-opinion-code-review-prompt.txt`. Include:
+- The path to the plan file — instruct the reviewer to read it with its file-read tool
+- The full git diff (the reviewer can't run git, so the diff must be in the prompt)
 - Instruction to read `~/workflows/planning/code-review-criteria.md` for the review checklist
-- The paths to AGENTS.md and CLAUDE.md — instruct copilot to read them using its `view` tool
+- The paths to AGENTS.md and CLAUDE.md — instruct the reviewer to read them with its file-read tool
 
-Do NOT paste the plan or convention files into the prompt — copilot should read them directly.
+Do NOT paste the plan or convention files into the prompt — the reviewer has its own file-read tools.
 
-Run Copilot CLI:
-```
-cd /workspace && copilot -p "$(cat /tmp/copilot-code-review-prompt.txt)" \
-  --model sonnet \
-  --available-tools='view,glob,rg' \
-  --no-ask-user
-```
+**Dispatch on the captured value.** Take exactly one of these branches:
 
-Notes:
-- Run the copilot command in the background with a 15-minute timeout
-- If the Codex subagent finishes first and copilot is still running, inform the user
-- If copilot times out, ask whether to proceed with only the Codex review or retry
+- **`copilot` branch** — run in the background with a 15-minute timeout:
+
+  ```
+  cd /workspace && copilot -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+    --model "$REVIEWER_COPILOT_MODEL" \
+    --available-tools='view,glob,rg' \
+    --no-ask-user
+  ```
+
+  Note: this differs from the previous behaviour, which hardcoded `--model sonnet` regardless of user preference; the configured model now applies.
+
+- **`claude` branch** — run in the background with a 15-minute timeout:
+
+  ```
+  cd /workspace && claude -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+    --output-format text \
+    --dangerously-skip-permissions \
+    --no-session-persistence \
+    --allowedTools "Read Glob Grep"
+  ```
+
+Notes (apply to both branches):
+- If the Codex subagent (7a) finishes first and the second-opinion CLI is still running, inform the user.
+- If the second-opinion CLI times out, ask whether to proceed with only the Codex review or retry.
 
 ## Step 8: Consolidate and Fix
 

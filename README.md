@@ -130,7 +130,7 @@ The GitHub token is shared with the parent project automatically.
 
 ## Planning Workflow (Claude Code + Codex CLI)
 
-The environment includes a **spec → plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — both platforms use their own subagent plus Copilot CLI as second opinion (GPT-5.4 for Claude Code, Sonnet for Codex).
+The environment includes a **spec → plan → implement → finalize** workflow available in both Claude Code and Codex CLI. Each skill can be used independently or as a pipeline. Reviews run in parallel using cross-model adversarial review — both platforms use their own subagent plus a configurable second-opinion CLI selected at setup time (see [Reviewer configuration](#reviewer-configuration) below).
 
 Shared workflow content (review criteria, plan format, spec format, TDD structure) lives in `docs/workflows/planning/` and is referenced by both platforms' skills at `~/workflows/planning/` inside the container.
 
@@ -139,8 +139,8 @@ Shared workflow content (review criteria, plan format, spec format, TDD structur
 | Skill | Description |
 |---|---|
 | `/bdd-spec [feature]` | Conversational BDD spec authoring — elicits specs through structured dialogue, produces executable tests |
-| `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + Copilot CLI), revises, saves to `docs/plans/` |
-| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs a boy scout cleanup pass, then parallel code reviews |
+| `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`), revises, saves to `docs/plans/` |
+| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs a boy scout cleanup pass, then parallel code reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`) |
 | `/finalize [path]` | Generates ADR in `docs/adrs/`, deletes plan file, offers to commit or create PR |
 
 ### Codex CLI
@@ -148,8 +148,8 @@ Shared workflow content (review criteria, plan format, spec format, TDD structur
 | Skill | Description |
 |---|---|
 | `$bdd-spec [feature]` | Same conversational spec authoring workflow |
-| `$plan-review [description]` | Same workflow, uses Codex subagent + Copilot CLI (Sonnet) for parallel reviews |
-| `$implement-plan [path]` | Same workflow, uses Codex subagents + Copilot CLI (Sonnet) for code reviews |
+| `$plan-review [description]` | Same workflow, uses Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER` for parallel reviews |
+| `$implement-plan [path]` | Same workflow, uses Codex subagents + configured second-opinion CLI per `$CODEX_REVIEWER` for code reviews |
 | `$finalize [path]` | Same workflow (mostly platform-agnostic) |
 
 ### Specification tests
@@ -204,6 +204,36 @@ Default behavior (per-commit gating) is unchanged for projects without the marke
 
 TDD is enforced by default. Plan files in `docs/plans/` bridge context between skills and sessions. ADRs capture reasoning, not just what was built.
 
+### Reviewer configuration
+
+Each skill family pairs its own subagent with a configurable second-opinion CLI. The choice is made on first run of `setup-mac.sh`, which asks two questions:
+
+1. **Reviewer for Claude Code skills** (`/plan-review`, `/implement-plan`): `codex` or `copilot`.
+2. **Reviewer for Codex skills** (`$plan-review`, `$implement-plan`): `claude` or `copilot`.
+
+If either answer is `copilot`, a third question selects the Copilot model: `gpt-5.4`, `gpt-5.3-codex`, or `gpt-5.2`.
+
+The choices persist in `~/.config/devenv/config` as `CLAUDE_REVIEWER`, `CODEX_REVIEWER`, and `REVIEWER_COPILOT_MODEL`. They are propagated into each project container as env vars by `dev <project>`. Skills read them at runtime to pick a dispatch branch — no code change is needed when you switch reviewers.
+
+The container image is built per choice: only the CLIs that the configuration actually needs are installed. A personal-use image with `CLAUDE_REVIEWER=codex CODEX_REVIEWER=claude` will not contain Copilot CLI at all.
+
+**To change the reviewers later:**
+
+```bash
+bash setup-mac.sh --reconfigure-reviewers
+dev <project> --rebuild
+```
+
+The `--rebuild` is required because env vars and state-dir mounts are set at container creation time, not at every `dev` invocation.
+
+### Migration notes
+
+Upgrading from a version that hardcoded Copilot:
+
+- The first `setup-mac.sh` run after pulling will prompt for the new reviewer keys; existing user identity (name/email) is untouched.
+- After answering, run `dev <project> --rebuild` for each existing project to pick up the new env vars and the gated state-dir mounts.
+- **Codex-side behavioural change:** the previous `$plan-review` and `$implement-plan` invoked Copilot with `--model sonnet` regardless of preference. The new dispatcher uses `$REVIEWER_COPILOT_MODEL` (default `gpt-5.4`) on both sides. If you specifically relied on Sonnet for Codex-side reviews and want to preserve that, the model selection is currently single-valued across both sides; raise an issue if split-per-side model choice is needed.
+
 ---
 
 ## Credential Persistence
@@ -212,8 +242,8 @@ Auth state survives container rebuilds:
 
 - **GitHub token** — per-project, at `~/.config/devenv/tokens/<project>`. Worktrees share the parent's token.
 - **Claude Code** — shared across projects, at `~/.config/devenv/claude-state/`. Login once with `claude /login`.
-- **Copilot CLI** — shared across projects, at `~/.config/devenv/copilot-state/`. Login once with `copilot -i` then `/login`.
-- **Codex CLI** — shared across projects, at `~/.config/devenv/codex-state/`. Login once with `codex login` (or `codex login --device-auth` for headless).
+- **Copilot CLI** — shared across projects, at `~/.config/devenv/copilot-state/`. Login once with `copilot -i` then `/login`. *Created and mounted only when Copilot is the configured reviewer for at least one skill family — see [Reviewer configuration](#reviewer-configuration).*
+- **Codex CLI** — shared across projects, at `~/.config/devenv/codex-state/`. Login once with `codex login` (or `codex login --device-auth` for headless). *Created and mounted only when `$CLAUDE_REVIEWER=codex`.*
 
 ---
 
@@ -227,7 +257,7 @@ For Shift+Enter in iTerm2: Preferences → Profiles → Keys → Key Mappings �
 
 ## Container Image
 
-The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, GitHub Copilot CLI, Claude Code (with codex-plugin-cc), OpenAI Codex CLI (with `approval_policy = "never"`), Docker Compose, and Playwright system dependencies.
+The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, Claude Code (with codex-plugin-cc), Docker Compose, and Playwright system dependencies. Two CLIs are *optionally* installed based on the user's reviewer configuration (see [Reviewer configuration](#reviewer-configuration)): GitHub Copilot CLI (installed only if Copilot is selected as the reviewer for at least one skill family) and OpenAI Codex CLI (installed only if `$CLAUDE_REVIEWER=codex`).
 
 ---
 

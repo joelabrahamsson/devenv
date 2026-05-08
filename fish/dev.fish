@@ -126,6 +126,28 @@ function dev
         echo ""
     end
 
+    # --- Reviewer config (read here so it's in scope when create_args is built) ---
+    # grep returns non-zero when the key is absent and writes nothing to stdout,
+    # so string replace over an empty capture yields "" and the test -z fallback
+    # supplies the default. Fish has no set -e, so the non-zero exit doesn't
+    # propagate. The 2>/dev/null guards the very-early upgrade case where the
+    # config file may not exist at all.
+    set claude_reviewer (string replace 'CLAUDE_REVIEWER=' '' (grep '^CLAUDE_REVIEWER=' ~/.config/devenv/config 2>/dev/null))
+    test -z "$claude_reviewer"; and set claude_reviewer codex
+    set codex_reviewer (string replace 'CODEX_REVIEWER=' '' (grep '^CODEX_REVIEWER=' ~/.config/devenv/config 2>/dev/null))
+    test -z "$codex_reviewer"; and set codex_reviewer claude
+    set reviewer_copilot_model (string replace 'REVIEWER_COPILOT_MODEL=' '' (grep '^REVIEWER_COPILOT_MODEL=' ~/.config/devenv/config 2>/dev/null))
+    test -z "$reviewer_copilot_model"; and set reviewer_copilot_model gpt-5.4
+
+    set install_copilot 0
+    if test "$claude_reviewer" = copilot -o "$codex_reviewer" = copilot
+        set install_copilot 1
+    end
+    set install_codex 0
+    if test "$claude_reviewer" = codex
+        set install_codex 1
+    end
+
     # --- Container names ---
     set dind_name "$project-dind"
     set dind_volume "$project-docker"
@@ -209,6 +231,9 @@ function dev
             --security-opt no-new-privileges \
             --env COMPOSE_PROJECT_NAME=$project \
             --env DOCKER_HOST=unix:///var/run/docker.sock \
+            --env CLAUDE_REVIEWER=$claude_reviewer \
+            --env CODEX_REVIEWER=$codex_reviewer \
+            --env REVIEWER_COPILOT_MODEL=$reviewer_copilot_model \
             --memory 8g \
             --cpus 4 \
             --pids-limit 1024 \
@@ -257,17 +282,26 @@ function dev
 
         # Persist Copilot CLI auth state across container rebuilds.
         # Shared across all projects — auth is tied to the user's account.
-        set copilot_state_dir ~/.config/devenv/copilot-state
-        mkdir -p $copilot_state_dir
-        set create_args $create_args -v $copilot_state_dir:/home/dev/.copilot
+        # Only created and mounted when Copilot is the configured reviewer for
+        # at least one skill family — otherwise the binary isn't installed and
+        # the mount would falsely advertise Copilot as available.
+        if test "$install_copilot" -eq 1
+            set copilot_state_dir ~/.config/devenv/copilot-state
+            mkdir -p $copilot_state_dir
+            set create_args $create_args -v $copilot_state_dir:/home/dev/.copilot
+        end
 
         # Persist Codex CLI auth state across container rebuilds.
         # Shared across all projects — auth is tied to the user's account.
         # Seed config files from the repo so they survive the bind mount.
-        set codex_state_dir ~/.config/devenv/codex-state
-        mkdir -p $codex_state_dir
-        cp -n $devenv_dir/codex-config/* $codex_state_dir/ 2>/dev/null
-        set create_args $create_args -v $codex_state_dir:/home/dev/.codex
+        # Only created and mounted when CLAUDE_REVIEWER=codex (the only case
+        # where the Codex CLI binary is installed in the image).
+        if test "$install_codex" -eq 1
+            set codex_state_dir ~/.config/devenv/codex-state
+            mkdir -p $codex_state_dir
+            cp -n $devenv_dir/codex-config/* $codex_state_dir/ 2>/dev/null
+            set create_args $create_args -v $codex_state_dir:/home/dev/.codex
+        end
 
         if not podman create $create_args devenv fish
             echo "ERROR: Failed to create container."
