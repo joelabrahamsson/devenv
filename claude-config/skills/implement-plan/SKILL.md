@@ -145,15 +145,12 @@ Before code review, verify that every concrete behavior the plan promised is act
 
 3. After the agent completes, read `/tmp/plan-conformance-audit.md` to get the full audit, then examine its verdict:
    - **`pass`** — proceed to Step 7
-   - **`gaps`** — present the promise table and the Gaps section to the user. For each missing/partial item, decide with the user:
-     - **Implement it** — launch a Sonnet agent to deliver the missing behavior, then re-run the audit
-     - **Defer it** — update the plan file to mark the promise as out of scope, then re-run the audit
-     - **Acknowledge and proceed** — only if the user explicitly accepts the gap; note the decision so it can flow into the ADR or commit message
-   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this to the user and proceed to Step 7; do not re-run.
+   - **`gaps`** — default to implementing each missing/partial promise: launch a Sonnet agent to deliver the missing behavior, then re-run the audit. The plan said this would happen, so closing the gap is the conservative move. Only stop and consult the user if (a) the implementation fix fails after one retry, or (b) the gap suggests the plan itself is wrong — e.g., delivering the promise would conflict with code that was deliberately added during implementation, or it would require scope changes the plan didn't anticipate. In the consult case, present the relevant gaps with your assessment and ask whether to implement, defer (mark the promise out of scope in the plan), or acknowledge and proceed.
+   - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this in your end-of-step summary and proceed to Step 7; do not re-run.
 
-   Do NOT proceed to Step 7 while the audit reports `gaps` unless the user has explicitly chosen to acknowledge each gap.
+   Do NOT proceed to Step 7 while the audit reports unresolved `gaps`.
 
-4. Also surface any "Unpromised Additions" the audit listed. These are usually fine, but the user should see them — they may indicate scope creep that belongs in a separate change.
+4. "Unpromised Additions" listed by the audit are informational — note them in your end-of-step summary so the user sees them, but do not pause for input. They may indicate scope creep that belongs in a separate change; the user can flag any concerns.
 
 ## Step 7: Code Review
 
@@ -227,9 +224,10 @@ Then proceed without waiting for confirmation. Go through each piece of feedback
 
 - **Obviously valid**: Launch a Sonnet agent to fix it.
 - **Obviously dismissible**: Dismiss it, briefly noting why.
-- **Ambiguous**: Present it to the user with your assessment and ask.
+- **Ambiguous at minor/nit severity**: Default to action without asking — apply if the fix is cheap and low-risk, dismiss otherwise. Note your call in the summary.
+- **Ambiguous at critical/major severity**: Present it to the user with your assessment and ask.
 
-Only stop and wait on ambiguous items. Do NOT pause for user approval before applying clear-cut fixes or dismissals — the consolidated summary is informational, not a checkpoint.
+Only stop and wait on ambiguous critical/major items. Do NOT pause for user approval before applying clear-cut fixes, dismissals, or low-severity judgment calls — the consolidated summary is informational, not a checkpoint.
 
 After fixes, run the full test suite again to confirm nothing broke.
 
