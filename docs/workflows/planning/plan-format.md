@@ -36,7 +36,24 @@ Plans are written to `docs/plans/YYYY-MM-DD-short-description.md` — date plus 
    **Decision rationale.** Incremental rebuilds match how developers actually iterate (small file changes), preserve all artifact paths and CI surface, and avoid a high-risk bundler swap. The only trade-off is a one-time stamp file in the repo cache directory.
    ```
 
-3. **Implementation Approach** — must include all four items below (a–d). The planner is responsible for filling in the project-specific text for items b and c, and for identifying any grouping candidates in item d.
+3. **Review depth** — controls how many adversarial review rounds run during `/plan-review` and `/implement-plan`. One bold inline label and value on its own line, optionally followed by a short reason that ties back to Motivation & Context.
+
+   - **`single`** (default) — one parallel review round in each skill.
+   - **`extended`** — one additional parallel review round after the round-1 revision/fix, scoped to the new state and framed to surface deeper concerns that round 1 may have anchored away from.
+
+   Choose `extended` when the change is substantial in *functionality or architecture*: introduces a new subsystem, alters architectural boundaries, changes data models or interfaces, modifies security/auth/permissions, or has cross-cutting effects across modules. **Do not choose `extended` based on size alone** — a 50-step mechanical refactor may be `single`; a 5-step auth change may be `extended`.
+
+   The planner sets the value during plan generation; the user can override it before review begins. Maximum one extra round per skill — never run a third round, even if round 2 surfaces new findings.
+
+   ### Rendered example
+
+   ```markdown
+   ## Review depth
+
+   **extended** — introduces a new permissions subsystem with cross-cutting effects on the request pipeline.
+   ```
+
+4. **Implementation Approach** — must include all four items below (a–d). The planner is responsible for filling in the project-specific text for items b and c, and for identifying any grouping candidates in item d.
 
    **a. TDD reminder** (include this exact text):
    > This plan follows a strict TDD workflow. For each step: write failing tests first, verify they fail, implement the minimum code to pass, verify they pass, then refactor if needed. Never skip ahead to implementation without a failing test.
@@ -75,7 +92,7 @@ Plans are written to `docs/plans/YYYY-MM-DD-short-description.md` — date plus 
    Candidate groupings: Steps 2a–2c (single new module, one TDD cycle).
    ```
 
-4. **Implementation Steps** — each step that involves code changes MUST follow the TDD structure below.
+5. **Implementation Steps** — each step that involves code changes MUST follow the TDD structure below.
 
 ## TDD Step Structure
 
@@ -121,7 +138,7 @@ Step 3: Add the /api/tags endpoint
 
 ## Acceptance Criteria (Optional)
 
-When a plan is derived from specification tests (produced by `/bdd-spec`), include this section after the Motivation & Context section (so the ordering is Goal → Motivation & Context → Acceptance Criteria → Implementation Approach → Implementation Steps):
+When a plan is derived from specification tests (produced by `/bdd-spec`), include this section after the Review depth section (so the ordering is Goal → Motivation & Context → Review depth → Acceptance Criteria → Implementation Approach → Implementation Steps):
 
 ```markdown
 ## Acceptance Criteria

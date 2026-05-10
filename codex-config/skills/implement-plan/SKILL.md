@@ -34,6 +34,8 @@ Your role is ORCHESTRATOR. Do NOT explore the codebase or read source files your
 
 6. Check if the plan has an "## Acceptance Criteria" section. If so, record the spec file paths listed there. These are **specification tests** — human-owned, read-only. They serve as acceptance gates for the implementation. Read the spec files to understand which scenarios they cover.
 
+7. Read the plan's "## Review depth" section and capture the value. Acceptable values are `single` (default) or `extended`. If the section is missing, treat it as `single`. If it's set to anything else, ask the user to clarify before proceeding. This value gates whether Step 8b runs.
+
 Then immediately proceed to Step 2.
 
 ## Step 2: Track Progress
@@ -213,6 +215,24 @@ Then proceed without waiting for confirmation. Go through each piece of feedback
 Only stop and wait on ambiguous critical/major items. Do NOT pause for user approval before applying clear-cut fixes, dismissals, or low-severity judgment calls — the consolidated summary is informational, not a checkpoint.
 
 After fixes, run the full test suite again to confirm nothing broke.
+
+## Step 8b: Extended Round (only when Review depth is `extended`)
+
+Skip this step entirely if the plan's `Review depth` field (captured in Step 1) is `single`. Otherwise, run one additional parallel code review on the post-fix diff. **Hard cap: one extra round only.** Even if round 2 surfaces new critical findings, do NOT run a round 3 — apply the Step 8 triage rule and proceed.
+
+Round 2 should be framed to look beyond what round 1 anchored on. Use the same parallel-launch mechanics as Step 7 (`spawn_agent` for the Codex code review and `shell` for the second-opinion CLI in the same turn), but with these differences:
+
+- **Capture the post-fix diff freshly** with `git diff HEAD` (or `git diff` if unstaged) — round 2 reviews the current state, including round-1 fixes.
+- **Output files use `-r2` suffixes** to avoid clobbering round 1: write the second-opinion prompt to `/tmp/second-opinion-code-review-prompt-r2.txt`.
+- **Reviewer framing** — include this in both prompts:
+
+  > This change has been through one round of adversarial review and revised in response. Round 1 already covered the obvious surface-level issues. Your job in this round is to surface what round 1 may have anchored away from: deeper architectural or functional concerns, second-order effects, security or correctness issues that weren't visible while the louder findings dominated the frame, and any new issues introduced by the round-1 fixes. Do not re-litigate items round 1 already raised and that the fixes addressed; focus on what's still latent.
+
+- The reviewers should still read the plan and convention docs directly. They do NOT need round 1's findings — withholding them is intentional, to reduce anchoring.
+
+After both round-2 reviews complete, run a compact version of Step 8 on the new findings: consolidate by severity, present to the user, then triage (obviously valid → subagent fixes; obviously dismissible → dismiss with note; ambiguous critical/major → ask user; ambiguous minor/nit → default to action without asking). After fixes, run the full test suite again.
+
+Then proceed to Step 9.
 
 ## Step 9: Next Steps
 

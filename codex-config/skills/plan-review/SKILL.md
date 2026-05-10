@@ -49,6 +49,10 @@ If the convention docs also state a regression *policy* such as `Regression poli
   - **Alternatives considered** — list approaches discussed (including ones the user dismissed) and the reason for rejecting each. If alternatives weren't surfaced and the change is non-trivial, ask the user directly what other approaches they considered before drafting this field.
   - **Decision rationale** — articulate why the chosen approach is correct given the problem, constraints, and alternatives.
   If the change is genuinely trivial (typo, mechanical rename, dependency bump), the section may be a single italicized line per `plan-format.md`. Both adversarial reviewers will read the entire plan including this section, and **may critique the reasoning** as well as the steps — `~/workflows/planning/review-criteria.md` includes a dedicated Motivation & Context checklist.
+- Set the plan's **Review depth** field (see `~/workflows/planning/plan-format.md`). Use the Motivation & Context content as the input signal:
+  - Default to `single`.
+  - Choose `extended` only when the change is substantial in *functionality or architecture* — new subsystem, altered architectural boundaries, data-model or interface changes, security/auth/permissions changes, or cross-cutting effects across modules. Size alone is not a reason; a large mechanical refactor stays `single`.
+  - Include a one-line reason that ties back to Motivation & Context (e.g., "introduces new permissions subsystem with cross-cutting request-pipeline effects").
 - Design a step-by-step implementation plan
 
 While designing the plan, also:
@@ -77,7 +81,12 @@ Once the plan is complete, write it to the location specified in plan-format.md.
 
 ## Step 3: Parallel Adversarial Reviews
 
-**Pre-launch gate:** Before launching reviews, confirm the plan file contains a populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it. Do NOT launch the parallel reviews with an incomplete Motivation & Context section.
+**Pre-launch gate:** Before launching reviews, confirm the plan file contains:
+
+1. A populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it.
+2. A populated `## Review depth` section with value `single` or `extended`. If missing or set to anything else, return to Step 2b and set it.
+
+Do NOT launch the parallel reviews until both gates pass.
 
 CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the second-opinion CLI in the same turn.
 
@@ -156,6 +165,23 @@ Go through each piece of feedback:
 - **Ambiguous feedback**: Present it to the user with your assessment and ask whether to incorporate it.
 
 Update the plan file with the revisions. Note what changed and why at the bottom of the file under a "## Revision Notes" section.
+
+## Step 5b: Extended Round (only when Review depth is `extended`)
+
+Skip this step entirely if the plan's `Review depth` field is `single`. Otherwise, run one additional parallel review on the revised plan. **Hard cap: one extra round only.** Even if round 2 surfaces new critical findings, do NOT run a round 3 — apply the Step 5 triage rule and proceed.
+
+Round 2 should be framed to look beyond what round 1 anchored on. Use the same parallel-launch mechanics as Step 3 (`spawn_agent` for the Codex adversarial review and `shell` for the second-opinion CLI in the same turn), but with these differences:
+
+- **Output files use `-r2` suffixes** to avoid clobbering round 1: write the second-opinion prompt to `/tmp/second-opinion-plan-review-prompt-r2.txt`.
+- **Reviewer framing** — include this in both prompts:
+
+  > This plan has been through one round of adversarial review and revised in response. Round 1 already covered the obvious surface-level issues. Your job in this round is to surface what round 1 may have anchored away from: deeper architectural or functional concerns, second-order effects, and issues that would have been visible if round 1's findings hadn't dominated the frame. You may also raise new issues introduced by the revisions. Do not re-litigate items that round 1 already raised and that the revisions addressed; focus on what's still latent.
+
+- The reviewers should still read the plan file directly (don't paste it). They do NOT need round 1's findings — withholding them is intentional, to reduce anchoring.
+
+After both round-2 reviews complete, run a compact version of Steps 4 and 5 on the new findings: consolidate by severity, present to the user, then triage (obviously valid → revise; obviously dismissible → dismiss with note; ambiguous critical/major → ask user; ambiguous minor/nit → default to action without asking). Append the further revisions to the same `## Revision Notes` section in the plan, marked as round 2.
+
+Then proceed to Step 6.
 
 ## Step 6: Offer Implementation
 
