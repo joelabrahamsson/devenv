@@ -4,3 +4,9 @@
 
 # macOS
 .DS_Store
+
+# Per-user Claude Code state
+.claude/
+
+# Python bytecode (proxy scripts)
+__pycache__/
