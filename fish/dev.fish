@@ -8,6 +8,7 @@
 #   dev-worktree <project> <branch> [--rebuild] — create a git worktree and enter its container
 #   dev-worktree-rm <project> <branch>  — remove a worktree and its infrastructure
 #   dev-shell <project-name>             — open an additional shell in a running container
+#   dev-token <project-name>             — refresh the GitHub token for a project
 #
 # Each project gets a DinD (Docker-in-Docker) sidecar container that provides
 # a fully isolated Docker daemon. Compose services run inside DinD, so
@@ -16,7 +17,202 @@
 # The GitHub token is stored at ~/.config/devenv/tokens/<project> on the Mac.
 # It is mounted read-only to a root-only path inside the container and served
 # to git via a credential proxy — the agent cannot read the raw token.
+# Each `dev` startup probes the token against the GitHub API, warns if it has
+# expired or expires within 48h, and offers to walk the user through generating
+# a replacement. The credential proxy re-reads the file per request, so the
+# bind mount picks up updates without recreating the container; gh's stored
+# auth state is re-synced based on file mtime.
 # Claude login lives inside the container and is lost on container removal.
+
+# --- GitHub token health helpers -------------------------------------------
+# These run on every `dev` invocation. They are best-effort: any failure
+# (offline, GitHub down, missing curl, unparseable header) is swallowed so
+# that token-checking never blocks dropping into a container.
+
+function __dev_token_probe
+    # Hit api.github.com with the project's token and emit two lines:
+    #   <status>      one of: ok, invalid, unknown
+    #   <expiry>      a "YYYY-MM-DD HH:MM:SS UTC" string, or empty
+    # Empty output means the probe could not run (no token / network error).
+    set -l token_file $argv[1]
+    test -f $token_file; or return
+
+    set -l token (cat $token_file 2>/dev/null | string trim)
+    test -n "$token"; or return
+
+    # -s silent, -I HEAD only, -m 5 short timeout. Suppress stderr so a DNS
+    # failure doesn't dump errors over a fresh prompt.
+    set -l headers (curl -sI -m 5 \
+        -H "Authorization: Bearer $token" \
+        -H "User-Agent: devenv-token-check" \
+        https://api.github.com/user 2>/dev/null)
+    test (count $headers) -gt 0; or return
+
+    set -l status_line (string trim -- $headers[1])
+    set -l status unknown
+    if string match -qr '^HTTP/\S+\s+2\d\d' -- $status_line
+        set status ok
+    else if string match -qr '^HTTP/\S+\s+401' -- $status_line
+        set status invalid
+    end
+
+    set -l expiry ""
+    for line in $headers
+        if string match -qir '^github-authentication-token-expiration:' -- $line
+            set expiry (string replace -ri '^[^:]+:\s*' '' -- $line | string trim)
+            break
+        end
+    end
+
+    echo $status
+    echo $expiry
+end
+
+function __dev_token_expiry_check
+    # Probe the token and prompt the user if action is needed.
+    set -l token_file $argv[1]
+    set -l project $argv[2]
+
+    set -l result (__dev_token_probe $token_file)
+    test (count $result) -ge 1; or return
+
+    set -l status $result[1]
+    set -l expiry ""
+    test (count $result) -ge 2; and set expiry $result[2]
+
+    set -l reason ""
+    if test "$status" = invalid
+        set reason "is invalid or revoked"
+    else if test -n "$expiry"
+        # Header format per GitHub docs: "2026-06-01 12:00:00 UTC". BSD date's
+        # strptime can't parse %Z, so strip the trailing zone and tell `date`
+        # to interpret the remainder as UTC via the TZ env var.
+        set -l expiry_naive (string replace -r ' UTC$' '' -- $expiry)
+        set -l expiry_epoch (TZ=UTC date -j -f "%Y-%m-%d %H:%M:%S" "$expiry_naive" "+%s" 2>/dev/null)
+        if test -n "$expiry_epoch"
+            set -l now_epoch (date +%s)
+            set -l seconds_left (math $expiry_epoch - $now_epoch)
+            if test $seconds_left -le 0
+                set reason "expired at $expiry"
+            else if test $seconds_left -lt 172800
+                set -l hours_left (math -s0 $seconds_left / 3600)
+                set reason "expires at $expiry (in ~$hours_left h)"
+            end
+        end
+    end
+
+    test -z "$reason"; and return
+
+    echo ""
+    echo "⚠ GitHub token for '$project' $reason."
+    __dev_token_refresh $token_file $project $status
+end
+
+function __dev_token_refresh
+    # Walk the user through generating a new fine-grained token, paste it,
+    # and persist it. Caller passes status (invalid/ok/unknown) so we can
+    # tailor the "if you skip" hint.
+    set -l token_file $argv[1]
+    set -l project $argv[2]
+    set -l status $argv[3]
+
+    echo ""
+    read --prompt-str "Generate a new token now? [Y/n] " response
+    switch (string lower -- "$response")
+        case n no
+            if test "$status" = invalid
+                echo "Skipped. git push/pull and gh will fail until the token is refreshed."
+            else
+                echo "Skipped. Run 'dev-token $project' (or re-enter dev) when you're ready."
+            end
+            return
+    end
+
+    set -l url "https://github.com/settings/personal-access-tokens/new"
+    echo ""
+    echo "Opening $url ..."
+    echo ""
+    echo "Suggested settings:"
+    echo "  Name:               $project"
+    echo "  Expiration:         (your preference, max 1 year)"
+    echo "  Repository access:  Only select repositories → pick your repo"
+    echo "  Permissions:"
+    echo "    Contents:         Read & Write  (git push/pull)"
+    echo "    Pull requests:    Read & Write  (create/update PRs)"
+    echo "    Metadata:         Read          (required)"
+    echo ""
+    if command -q open
+        open $url 2>/dev/null
+    end
+
+    read --silent --prompt-str "Paste new token (or press Enter to skip): " new_token
+    echo ""
+    if test -z "$new_token"
+        echo "Skipped."
+        return
+    end
+
+    # Same-inode rewrite (open + truncate + write) preserves the bind mount
+    # into the container so the credential proxy picks up the new value on
+    # its next request without recreating the container.
+    echo $new_token > $token_file
+    chmod 600 $token_file
+    echo "✓ Token updated at $token_file"
+
+    # gh's stored auth state lives inside the container and won't auto-refresh
+    # from the file. Resync immediately for the current container; other
+    # containers using the same token (worktrees, etc.) pick it up on their
+    # next `dev` startup via the mtime check in __dev_resync_gh_auth.
+    __dev_resync_gh_auth $token_file $project --force
+end
+
+function __dev_resync_gh_auth
+    # If the token file is newer than gh's stored auth in the container
+    # (or gh has no stored auth), re-run gh auth login --with-token.
+    # This is what makes a token refresh in one container propagate to
+    # every other container (worktrees etc.) on its next `dev` startup.
+    set -l token_file $argv[1]
+    set -l project $argv[2]
+    set -l force 0
+    if contains -- --force $argv
+        set force 1
+    end
+
+    test -f $token_file; or return
+    podman ps --format '{{.Names}}' 2>/dev/null | grep -qx $project; or return
+
+    if test $force -eq 0
+        # stat -f follows symlinks (worktree tokens are symlinks to parent).
+        set -l token_mtime (stat -f %m $token_file 2>/dev/null)
+        test -n "$token_mtime"; or return
+
+        set -l gh_mtime (podman exec $project stat -c %Y /home/dev/.config/gh/hosts.yml 2>/dev/null)
+        if test -n "$gh_mtime" -a "$token_mtime" -le "$gh_mtime"
+            return
+        end
+    end
+
+    if podman exec --user root $project bash -c \
+        "cat /run/secrets/github-token | su dev -c 'gh auth login --with-token'" >/dev/null 2>&1
+        echo "✓ Refreshed gh auth in container"
+    end
+end
+
+function dev-token
+    # Manual token refresh — same flow as the auto-prompt, for use when the
+    # user dismissed the startup prompt or wants to rotate proactively.
+    set -l project $argv[1]
+    if test -z "$project"
+        echo "Usage: dev-token <project-name>"
+        return 1
+    end
+    set -l token_file ~/.config/devenv/tokens/$project
+    if not test -f $token_file
+        echo "No token file at $token_file. Run 'dev $project' to create one."
+        return 1
+    end
+    __dev_token_refresh $token_file $project unknown
+end
 
 function dev
     set project $argv[1]
@@ -464,6 +660,17 @@ function dev
                 echo "  claude   (then /login)"
             end
         end
+    end
+
+    # GitHub token health: re-sync gh auth if the token file has changed since
+    # the container last logged in (catches refreshes done from another
+    # container — worktrees etc.), then probe expiry and prompt if needed.
+    # Skip on first creation: the user just pasted a fresh token and gh auth
+    # login already ran, so resync is a no-op and the expiry probe is unlikely
+    # to fire usefully.
+    if test $is_new -eq 0
+        __dev_resync_gh_auth $token_file $project
+        __dev_token_expiry_check $token_file $project
     end
 
     podman exec -it $project fish

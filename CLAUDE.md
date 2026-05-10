@@ -36,7 +36,7 @@ Never skip step 2 before step 4 — the `dev` function must exist before a conta
 - Only `~/projects/<projectname>` is mounted, plus the docker allowlist (read-only) and Podman socket.
 - The GitHub token is stored at `~/.config/devenv/tokens/<projectname>` on the Mac (not in the project directory).
 - The token is mounted to a root-only path inside the container. The agent cannot read it directly — git credentials are served via a credential proxy over a Unix socket.
-- The `gh` CLI is authenticated via `gh auth login` at container creation. Auth state is stored in `~/.config/gh/` inside the container — the raw token is never in the environment.
+- The `gh` CLI is authenticated via `gh auth login` at container creation. Auth state is stored in `~/.config/gh/` inside the container — the raw token is never in the environment. On every subsequent `dev <project>` startup, `dev` probes the token against the GitHub API and warns if it is invalid or expires within 48h, offering to walk the user through generating a replacement. Updating the token file (via the prompt or `dev-token <project>`) is picked up by the credential proxy on its next request without recreating the container; gh's stored auth is re-synced on next startup based on file mtime, which propagates the refresh to other containers using the same token (e.g., worktrees).
 - GitHub Copilot CLI and OpenAI Codex CLI are optionally installed via npm (`@github/copilot`, `@openai/codex`) — only the CLIs the user's reviewer configuration needs are present in the image. Scripts must not assume either binary exists; check `$CLAUDE_REVIEWER` / `$CODEX_REVIEWER` first.
 - Credentials (claude login) live inside the container and are lost if the container is removed.
 - Each project has its own DinD (Docker-in-Docker) sidecar with a fully isolated Docker daemon. Docker-compose services run inside DinD. `localhost:<port>` works normally. Multiple projects can run the same services on the same ports without collision.
@@ -61,6 +61,9 @@ dev <projectname>
 
 **Change which reviewer the planning skills use:**
 Run `bash setup-mac.sh --reconfigure-reviewers` on the Mac, then `dev <project> --rebuild` to recreate the container with the matching CLI installed. The selection persists in `~/.config/devenv/config` (keys: `CLAUDE_REVIEWER`, `CODEX_REVIEWER`, `REVIEWER_COPILOT_MODEL`).
+
+**Refresh an expired or near-expiry GitHub token:**
+Run `dev <project>` — the startup probe detects expired/expiring tokens (within 48h) and offers an interactive refresh that opens the GitHub PAT page, accepts the pasted token, writes it to `~/.config/devenv/tokens/<project>`, and re-runs `gh auth login` inside the running container. To rotate proactively at any time, run `dev-token <project>` from the Mac. For worktrees, the token is symlinked from the parent project — refreshing once updates all containers; each one re-syncs its `gh` state on its next `dev` startup.
 
 **Recover from an ungraceful host shutdown (macOS upgrade, kernel panic, force-restart):**
 The DinD volume persists `/var/run`, so a stale `containerd.pid` can survive and block dockerd from starting (symptom: `failed to start containerd: ... process with PID N is still running`). Since the dev container shares the DinD network namespace, when DinD won't start, the dev container has no network and Claude Code reports `ConnectionRefused` against `api.anthropic.com`. The `dev` function clears stale pid files automatically before starting a stopped DinD, so usually `dev <project>` is enough. If you ever bypass `dev` (e.g. `podman start <project>-dind` directly) and hit this, run `dev <project>` to trigger the cleanup.
