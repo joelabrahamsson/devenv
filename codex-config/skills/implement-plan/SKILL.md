@@ -204,14 +204,17 @@ Notes (apply to both branches):
 
 ## Step 8: Consolidate and Fix
 
-Once BOTH reviews are complete:
-1. Consolidate feedback — group by severity, deduplicate, note consensus and disagreements
-2. Present consolidated feedback to the user
-3. Go through each piece of feedback:
-   - **Obviously valid**: Spawn a subagent to fix it
-   - **Obviously dismissible**: Dismiss it, briefly noting why
-   - **Ambiguous**: Present to user with your assessment and ask
-4. Run the full test suite again after fixes to confirm nothing broke
+Once BOTH reviews are complete, consolidate the feedback — group by severity, deduplicate, note consensus and disagreements — and present the summary to the user.
+
+Then proceed without waiting for confirmation. Go through each piece of feedback:
+
+- **Obviously valid**: Spawn a subagent to fix it.
+- **Obviously dismissible**: Dismiss it, briefly noting why.
+- **Ambiguous**: Present it to the user with your assessment and ask.
+
+Only stop and wait on ambiguous items. Do NOT pause for user approval before applying clear-cut fixes or dismissals — the consolidated summary is informational, not a checkpoint.
+
+After fixes, run the full test suite again to confirm nothing broke.
 
 ## Step 9: Next Steps
 
