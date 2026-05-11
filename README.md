@@ -139,17 +139,18 @@ Shared workflow content (review criteria, plan format, spec format, TDD structur
 | Skill | Description |
 |---|---|
 | `/bdd-spec [feature]` | Conversational BDD spec authoring — elicits specs through structured dialogue, produces executable tests |
-| `/plan-review [description]` | Explores codebase, creates TDD plan, runs parallel adversarial reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`), revises, saves to `docs/plans/` |
-| `/implement-plan [path]` | Delegates each step to Sonnet subagents with strict TDD, runs a boy scout cleanup pass, then parallel code reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`) |
-| `/finalize [path]` | Generates ADR in `docs/adrs/`, deletes plan file, offers to commit or create PR |
+| `/plan-review [description]` | Explores codebase, derives a user-approved Behavioral Contract (Gherkin), creates a TDD plan with per-step test_strategy labels, runs parallel adversarial reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`), revises, saves to `docs/plans/` |
+| `/implement-plan [path]` | Delegates each step to Sonnet subagents following the step's declared test_strategy, runs a conformance audit verifying every Behavioral Contract scenario is covered, then a boy scout cleanup pass and parallel code reviews (Claude agent + configured second-opinion CLI per `$CLAUDE_REVIEWER`) |
+| `/finalize [path]` | Assesses ADR worthiness from Motivation & Context, generates ADR in `docs/adrs/` when warranted, proposes a `## Patterns` entry when the implementation mirrored an existing exemplar, deletes plan file, offers to commit or create PR |
+| `/workflow-audit` | Audits the project for conformance with the planning workflow — proposes new `## Patterns` entries for recurring shapes, verifies existing entries cite real files, flags major features missing BDD specs (read-only proposal; writes only on user Accept) |
 
 ### Codex CLI
 
 | Skill | Description |
 |---|---|
 | `$bdd-spec [feature]` | Same conversational spec authoring workflow |
-| `$plan-review [description]` | Same workflow, uses Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER` for parallel reviews |
-| `$implement-plan [path]` | Same workflow, uses Codex subagents + configured second-opinion CLI per `$CODEX_REVIEWER` for code reviews |
+| `$plan-review [description]` | Same workflow, uses Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER` for parallel reviews. *Does not currently derive a Behavioral Contract or label per-step test_strategy — plans default to legacy `red-first` for every step. Parity port queued.* |
+| `$implement-plan [path]` | Same workflow, uses Codex subagents + configured second-opinion CLI per `$CODEX_REVIEWER` for code reviews. *Conformance audit operates in fallback mode for unlabeled plans (no per-step ownership).* |
 | `$finalize [path]` | Same workflow (mostly platform-agnostic) |
 
 ### Specification tests
@@ -178,6 +179,26 @@ Example pipeline with specs:
 ```
 
 Without specs, the pipeline works exactly as before — all spec-related behavior is opt-in.
+
+### Behavioral Contract and per-step test strategy
+
+Each plan produced by `/plan-review` includes a `## Behavioral Contract` section — a user-approved set of Gherkin scenarios capturing the user-observable behavior the implementation must deliver. The contract is derived at the start of plan design (sub-step 2b) and gates with `Approve / Edit / Abort` before steps are designed. This is the high-leverage human checkpoint in a workflow that otherwise trusts the agent for code and tests. For changes with no user-observable behavior (refactors, mechanical renames, dep bumps), the section uses a canonical escape line instead.
+
+Each implementation step declares a `test_strategy`: `red-first` (the strict TDD default), `build-then-test` (pattern-following work with a non-tautology safeguard), `property-based` (pure transformations with extractable invariants), or `integration-only` (pure wiring or declaration, covered by a named parent step). Per-step `**Covers:**` lines map contract scenarios and invariants to the owning step. The post-implementation conformance audit verifies every promise maps to a test that ran and passed; misclassified `integration-only` steps fail the audit. See `~/workflows/planning/plan-format.md` § TDD Step Structure for the classification heuristics.
+
+Strategy labels are opt-in per the format spec; Claude's `/plan-review` always opts in. Plans without labels (legacy or Codex-CLI-authored) are valid and treated as all-`red-first` for back-compat.
+
+### Patterns and workflow audit
+
+Projects can maintain a `## Patterns` section in their CLAUDE.md or AGENTS.md — a curated 5–15-entry index mapping recurring problem-shapes to canonical exemplar files. Each entry is 3–5 lines (Shape, Exemplar path, What to mirror, optional Anti-pattern). Because Claude Code subagents auto-load the agent doc, every implementation subagent sees the section for free, which short-circuits the most common form of subagent overhead: re-greping to "find the right pattern."
+
+Curation is distributed across three skills:
+
+- **`/plan-review`** consults the section at design time and cites matching entries by name in plan steps using the canonical phrase `per Patterns: "<shape title>"`. Stale entries (cited file missing) surface inline for free-text correction (`corrected path`, `remove`, or `keep as-is`).
+- **`/finalize`** proposes a new entry at commit time when the plan referenced an exemplar via `mirror <path>` or the canonical citation phrase. Detection is strictly plan-prose-based; no diff scanning (that's `/workflow-audit`'s job).
+- **`/workflow-audit`** is the back-fill path: scans the codebase for recurring shapes not yet in the section (3+ representatives, excluding generated, vendor, test, fixture, migration, and type-only files), validates existing entries cite real files, and flags features that lack BDD spec coverage (cross-referencing the full spec directory rather than name-matching). Read-only proposal phase + write only on user Accept; per-stage cap of 5 items per run ranked by confidence; re-run for additional batches.
+
+See `~/workflows/planning/patterns-format.md` for the section's format, canonical citation phrase, and rendered example. The skill's scope-boundary rule keeps `/workflow-audit` focused on project-level workflow artifacts — it does not absorb code quality, security, PR review, implementation conformance, or feature-specific planning.
 
 ### Testing and regression policy
 
@@ -270,8 +291,10 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 ├── docs/workflows/planning/           # Shared workflow docs (deployed to ~/workflows/)
 │   ├── review-criteria.md             # Adversarial plan review checklist
 │   ├── code-review-criteria.md        # Adversarial code review checklist
-│   ├── plan-format.md                 # Plan file format and TDD structure
-│   └── spec-format.md                 # Specification test conventions and format
+│   ├── plan-conformance-criteria.md   # Plan-conformance audit criteria
+│   ├── plan-format.md                 # Plan file format, Behavioral Contract, TDD structure
+│   ├── spec-format.md                 # Specification test conventions and format
+│   └── patterns-format.md             # `## Patterns` section convention
 ├── claude-config/                     # Copied to ~/.claude/ in containers and on Mac
 │   ├── CLAUDE.md                      # Global Claude Code instructions for all projects
 │   ├── settings.json                  # Claude Code settings
@@ -281,7 +304,8 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 │   │   ├── bdd-spec/SKILL.md          # /bdd-spec — conversational BDD spec authoring
 │   │   ├── plan-review/SKILL.md       # /plan-review — planning with adversarial review
 │   │   ├── implement-plan/SKILL.md    # /implement-plan — TDD implementation via subagents
-│   │   └── finalize/SKILL.md          # /finalize — ADR generation + ship
+│   │   ├── finalize/SKILL.md          # /finalize — ADR generation + Patterns proposal + ship
+│   │   └── workflow-audit/SKILL.md    # /workflow-audit — project conformance back-fill
 │   └── agents/
 │       ├── adversarial-reviewer/      # Plan review agent (refs ~/workflows/)
 │       ├── boyscout/                  # Boy scout cleanup agent (post-implementation)
