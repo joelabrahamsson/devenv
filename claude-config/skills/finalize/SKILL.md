@@ -27,6 +27,8 @@ Read the plan file in full.
 
 Understand what was implemented by examining:
 - The plan file — pay specific attention to the **Motivation & Context** section (problem, constraints, alternatives considered, decision rationale). This is the primary source of "why"; the rest of the plan is "what" and "how". *If the plan predates this requirement and has no Motivation & Context section, fall back to the Goal section and Revision Notes for "why" content, and note the missing motivation in the Step 3 assessment.*
+- The plan's **Behavioral Contract** section — the user-approved Gherkin scenarios (or pointer to spec file, or escape line). This is the authoritative source of "what user-observable behavior was promised" and feeds Step 3's ADR-worthiness decision plus the ADR's behavioral specification in Step 4. *If the plan is a legacy plan with no Behavioral Contract section, fall back to the Implementation Steps and note the absence in Step 4.*
+- The plan's **Revision Notes** section — including any mid-implementation contract changes recorded there (typically from `/implement-plan`'s OUT_OF_CONTRACT_BEHAVIOR handling). When generating the ADR, use the **final state** of the Behavioral Contract section, which includes any mid-implementation additions; do NOT reconstruct an earlier state.
 - The git diff or recent commits (`git log --oneline -20` and `git diff` or `git diff HEAD`) — used to verify what was actually shipped versus what the plan promised.
 - Any CLAUDE.md or AGENTS.md for project conventions.
 
@@ -39,13 +41,15 @@ Not every implementation warrants an ADR. Decide based on the Motivation & Conte
 - A non-trivial constraint shaped the design and isn't visible in the code (e.g., regulatory, performance, compatibility, security trade-off).
 - A new architectural pattern, convention, or boundary was introduced.
 - The adversarial reviews materially changed the approach (Revision Notes show real pivots, not just polish).
+- The plan's Behavioral Contract section is **substantive** — full Gherkin scenarios, pointer to a spec file, or pointer+supplemental. Substantive contracts mean the change has user-observable behavior worth recording durably in an ADR.
 
 **An ADR is NOT warranted when:**
 - Motivation & Context is replaced by `*Trivial change …*` or all four fields are `n/a`.
 - The change is mechanical (typo fixes, dependency bumps, formatting) or obvious from the diff.
 - There were no real alternatives — the chosen approach was the only sensible one.
+- The plan's Behavioral Contract section uses an **escape line** (e.g., `*No behavioral change — internal refactor.*`) AND Motivation & Context is also trivial. An escape line alone doesn't disqualify the ADR (a substantial refactor with rich motivation can still warrant one), but it weakens the case when motivation is also thin.
 
-**Tiebreaker (when in doubt):** lean toward warranted if the Motivation & Context section has non-empty, non-`n/a` content in **Alternatives considered** OR **Decision rationale**. Lean against if those two fields are both `n/a` or trivial. This anchors the call to the plan's actual reasoning rather than free-floating judgment.
+**Tiebreaker (when in doubt):** lean toward warranted if the Motivation & Context section has non-empty, non-`n/a` content in **Alternatives considered** OR **Decision rationale**, OR if the Behavioral Contract section is substantive. Lean against if Motivation & Context's reasoning fields are both `n/a` or trivial AND the Behavioral Contract is an escape line. This anchors the call to the plan's actual reasoning rather than free-floating judgment.
 
 Form your assessment, then present it via `AskUserQuestion`: *"My read: ADR [warranted | not warranted] because [one-sentence reason]. Proceed?"* with options `Yes — generate ADR`, `No — skip ADR`, and `Override — let me explain`. Do NOT auto-proceed.
 
@@ -80,6 +84,16 @@ Draw primarily from the plan's **Motivation & Context** section — specifically
 <What was decided? What approach was chosen and why?
 Draw primarily from Motivation & Context's **Alternatives considered** and **Decision rationale**. Use Implementation Approach and Revision Notes only to ground the discussion in what was concretely built.>
 
+## Behavioral Contract
+
+<The user-observable behavior the implementation delivers. Populate this section from the plan's `## Behavioral Contract` section per the form (use the FINAL state after any mid-implementation Revision Notes additions):
+
+- **Full Gherkin contract:** copy the scenarios verbatim (Feature blocks + Gherkin fences + Invariants sub-section if present).
+- **Pointer form:** include the pointer line + a copy of the relevant scenarios from the referenced spec file. The ADR should be self-contained, so dereference the pointer here.
+- **Pointer + supplemental:** include both the dereferenced spec scenarios AND the supplemental scenarios from the plan.
+- **Escape line:** include the escape line verbatim. This documents that the change was deliberately scoped to have no user-observable behavior.
+- **Legacy plan (no section):** omit this section entirely.>
+
 ## Consequences
 
 ### Positive
@@ -92,11 +106,12 @@ Draw primarily from Motivation & Context's **Alternatives considered** and **Dec
 <What could go wrong? What should be watched?>
 ```
 
-The ADR should capture the *reasoning* behind decisions, not just describe what was built. Focus on:
+The ADR should capture the *reasoning* behind decisions PLUS the *behavioral specification* of the change. Focus on:
 - Why this approach was chosen over alternatives
 - What trade-offs were made and why
 - What constraints influenced the design
 - What the adversarial reviews caught and how it changed the approach (from the plan's revision notes)
+- The user-observable behavior the change delivers (Behavioral Contract section)
 - Anything non-obvious that a future developer (or AI assistant) should know
 
 ## Step 5: Remove Plan File
@@ -123,6 +138,8 @@ Present options based on git state:
 2. **Commit, push, and create PR** (if one doesn't already exist for this branch)
 
 When committing, write a clear commit message summarizing what was implemented and why. If an ADR was generated, include the ADR reference. If no ADR was generated (skip path), draw on the plan's Motivation & Context section to write a richer commit message — surface the why, not just the what.
+
+For plans with a substantive Behavioral Contract section (full Gherkin, pointer, or pointer+supplemental), include a brief "Behavior delivered:" line in the commit message body listing 1–2 short scenario-title bullets so the contract is visible when scrolling git history. For escape-line plans, omit that line — the commit message reflects Motivation & Context only.
 
 When creating a PR:
 - Use a concise title (under 70 characters)

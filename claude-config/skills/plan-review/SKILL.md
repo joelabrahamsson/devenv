@@ -49,9 +49,43 @@ If the convention docs also state a regression *policy* such as `Regression poli
 - Fall back to Explore agents, but scope them to the specific area of the codebase relevant to the task — not the entire project
 - Limit to 1 Explore agent if the task is focused, 2 maximum if it spans multiple areas
 
-### 2b: Design the plan
+### 2b: Derive Behavioral Contract
 
-- Ask the user clarifying questions as needed using AskUserQuestion
+This sub-step derives the Gherkin scenarios that capture the user-observable behavior the implementation must deliver, presents them to the user, and gates on approval before plan design (sub-step 2c) begins. The contract becomes the high-leverage human checkpoint in a workflow the user otherwise trusts not to require code or test review.
+
+If anything in this sub-step's prose contradicts the `Behavioral Contract` section spec in `~/workflows/planning/plan-format.md` (item 4 in Required Sections), the format spec wins — that is the authoritative reference.
+
+Sub-step behavior:
+
+1. **Spec file supplied with no additional behavioral scope.** Check whether Step 1's spec-file detection found a file with the `SPECIFICATION TEST` header AND whether the remaining `$ARGUMENTS` text contains additional scope. If a spec file was supplied AND the additional scope is empty or trivial (e.g., "just implement the spec"), skip derivation — the contract is the existing spec file, and the eventual plan's `Behavioral Contract` section will be the pointer form per plan-format.md. Tell the user: "Behavioral contract sourced from existing spec at `<path>` — no derivation needed."
+
+2. **Spec file supplied WITH additional behavioral scope.** If a spec file was supplied AND the additional scope text describes extra user-observable behavior not covered by the spec (e.g., "also handle rate limiting and session expiry"), derive *supplemental* Gherkin scenarios for the additional scope only. The spec file remains the base. Present only the supplemental scenarios to the user for approval (the spec file content is assumed already user-approved from `/bdd-spec`). The plan's `Behavioral Contract` section becomes the pointer line plus a `### Supplemental scenarios` block.
+
+3. **Trivially behavior-free change.** If the task description on its face is a refactor, mechanical rename, dependency bump, declarative-only addition, infra/config change, or exploratory spike, ask the user (via `AskUserQuestion`) whether to skip the contract step with an escape line, offering the appropriate canonical escape line from plan-format.md as the recommended option. If the user confirms skip, record the chosen escape line for use in the plan's `Behavioral Contract` section.
+
+4. **Derive scenarios (the normal case).** Otherwise, derive Gherkin scenarios from the original task description, conversation history, and codebase exploration from sub-step 2a. Apply the anti-inflation heuristic explicitly:
+
+   > One scenario per distinct behavior or decision, NOT per distinct input variation. If two cases share the same observable outcome (e.g., wrong password and non-existent email both produce 'invalid credentials' error), they are one scenario, not two. As a soft target, aim for 5–7 scenarios per feature. If the natural count exceeds 10, pause and check whether the plan should be split into multiple plans.
+
+5. **Identify property-shaped invariants.** If the change implies any property-shaped logic (round-trip identity, idempotence, ordering, schema-level constraints), draft them as bullets for the optional Invariants sub-section. Each invariant gets a short bolded title (e.g., `**Round-trip identity.** ...`) so that downstream test-naming rules (plan-conformance-criteria.md, implement-plan SKILL.md) can use the bolded title as the canonical reference.
+
+6. **Tag uncertainty.** For each scenario, tag it `confident` or `uncertain` (borrowed from `/bdd-spec`'s Stage 2 convention). Uncertain scenarios are ones the agent is guessing about — the user's judgment is needed. Tag scenarios uncertain conservatively; false-positive uncertainty is cheaper than silently asserting wrong behavior.
+
+7. **Present and gate.** Render the proposed scenarios (and invariants, if any) to the user in full Gherkin format — `Feature:` lines INSIDE a fenced ` ```gherkin ` block, not as Markdown headings outside — with uncertain ones flagged. Use `AskUserQuestion` to gate on one of:
+
+   - **Approve** — proceed to sub-step 2c with these scenarios as the contract.
+   - **Edit** — the user provides redlines (free-form text); the agent revises and re-presents, then re-gates.
+   - **Abort** — the user cancels the planning workflow.
+
+   Do NOT proceed to sub-step 2c without an `Approve` response.
+
+8. **Codebase-terminology cross-check (after Approve, before recording).** Before recording the final contract, briefly cross-check scenario terminology and preconditions against the codebase knowledge from sub-step 2a. If the contract uses a term that the codebase names differently (e.g., contract says "admin" but the codebase calls the same concept "superuser"), surface the discrepancy to the user as a single short note. Do NOT halt and do NOT re-gate. If the user wants the contract changed in response, revise and re-present scenarios at step 7 — but do NOT loop back to step 7 more than one additional time for terminology reasons; if a second round of terminology issues surfaces, record the contract as approved and continue, leaving the remaining adjustments for the user to make directly in the plan file. This is a soft check; its purpose is to prevent the contract from baking in stale or inconsistent terminology that propagates into tests and code.
+
+9. **Record the result.** Capture the approved contract — full Gherkin scenarios + Invariants sub-section; or pointer + supplemental scenarios; or pointer-only; or escape line — for inclusion in the plan's `Behavioral Contract` section when sub-step 2c writes the plan file.
+
+### 2c: Design the plan
+
+- Ask the user clarifying questions as needed using AskUserQuestion. **Constraint:** clarifying questions in 2c are limited to **design and implementation choices** (e.g., "which library?", "should this be a separate module?", "is the existing `FooHelper` the right place to extend?"). If a clarifying question would change *user-observable behavior* (e.g., "should we also handle rate limiting?", "should this be admin-only?"), abort the current 2c question and loop back to sub-step 2b to derive the additional behavioral scope and re-gate the contract. This preserves the "approval precedes design" invariant: the user always sees and approves behavioral scope before steps are designed around it.
 - Before drafting the step-by-step plan, populate the plan's **Motivation & Context** section (see `~/workflows/planning/plan-format.md` for the field structure). Draw the content from the user's original request, conversation history, and clarifying-question answers. The four fields are:
   - **Problem** — synthesize from what the user described.
   - **Constraints** — extract hard requirements surfaced in conversation or in convention docs.
@@ -63,6 +97,25 @@ If the convention docs also state a regression *policy* such as `Regression poli
   - Choose `extended` only when the change is substantial in *functionality or architecture* — new subsystem, altered architectural boundaries, data-model or interface changes, security/auth/permissions changes, or cross-cutting effects across modules. Size alone is not a reason; a large mechanical refactor stays `single`.
   - Include a one-line reason that ties back to Motivation & Context (e.g., "introduces new permissions subsystem with cross-cutting request-pipeline effects").
 - Design a step-by-step implementation plan
+- **Classify each step's `test_strategy` field during design.** For every implementation step, assign exactly one of the four strategies (`red-first`, `build-then-test`, `property-based`, `integration-only`) per the classification heuristics in `~/workflows/planning/plan-format.md` § TDD Step Structure. Write the strategy inline on the step heading: `### Step N: Title — strategy: <value>`. For `integration-only` steps, also name the parent step: `### Step N: Title — strategy: integration-only (covered by Step M)`. Strategy labels are opt-in by spec but Claude's `/plan-review` always opts in — every new plan produced through this skill labels every step.
+
+  **Heuristics summary** (the authoritative version lives in plan-format.md):
+  - Novel logic, schema invariants, multi-state orchestration, bug fixes → `red-first`
+  - Pattern-following CRUD, mechanical scaffolding from existing components → `build-then-test`
+  - Pure transformation with extractable invariants (round-trip, idempotence, ordering) → `property-based`
+  - Pure wiring or declaration (route registration, schema definitions, type-only changes, fixtures) → `integration-only`, with an explicit named parent step
+
+  **Default when uncertain.** Choose `red-first`. False positives cost wall-clock; false negatives cost correctness. The contract gate from sub-step 2b is a safety net, but it's a coarse one — strategy classification is the finer-grained discipline.
+
+  **Same strategy within grouped steps.** Adjacent steps that share a single edit surface can be grouped into one commit (per the step-grouping allowance), but only if they share the same `test_strategy`. Exception: an `integration-only` step grouped with its named parent is allowed.
+
+  **Property-based framework prerequisite.** If you choose `property-based` for a step, verify the project already has a property-testing framework configured (e.g., `fast-check` in `package.json`, `hypothesis` in `pyproject.toml`). If not configured, choose a different strategy. Do NOT silently introduce a new dependency. Introducing a property-testing framework requires a separate prerequisite plan.
+
+  **Property-based requires a contract Invariant.** `property-based` steps deliver invariants. The contract's `### Invariants` sub-section MUST contain at least one entry the step references via its `Covers:` line. If the contract has no relevant Invariants entry, either revise the contract during sub-step 2b's edit-and-re-gate loop to add one, or choose `red-first` and cover the scenarios with example tests instead. Step-local properties not anchored in the contract are not durable promises and won't be audited.
+
+  **Spec-test interaction.** Steps that satisfy scenarios listed in the plan's `## Acceptance Criteria` section MUST use `red-first` strategy with the existing spec test as the RED phase. The other three strategies are not permitted for spec-satisfying steps. If a planner needs a different shape for such a step, revise the Acceptance Criteria to remove that scenario from the spec, or split the step.
+
+- **Write the `Covers:` line on every contract-bearing step.** When the plan has a populated (non-escape) Behavioral Contract, for each step that delivers contract scenarios or invariants, add a `**Covers:**` line directly below the step heading listing the canonical titles per the parsing rules in plan-format.md. For `integration-only` steps, the Covers line names what the parent step's test must cover; the parent step's own Covers line MUST be a superset (include all the same canonical titles, no paraphrasing). Verify this superset rule before completing plan design — the pre-launch gate (Step 3) and `/implement-plan` validation will both check it, so catching mismatches here saves a round-trip.
 
 While designing the plan, also:
 - Determine the project's targeted (inner-loop) test command by inspecting tooling — `package.json` scripts, `pyproject.toml`, `Cargo.toml`, project convention docs, etc. This concrete command goes into the "Inner-loop test command" line of the Implementation Approach section.
@@ -86,6 +139,12 @@ Read `~/workflows/planning/plan-format.md` for the required plan file format, TD
 
 The Implementation Approach section is required to include the regression bar (inherited from project convention docs or the documented strict default), the inner-loop test command, and the step-grouping allowance — see plan-format.md for the exact wording.
 
+When sub-step 2c writes the plan file, it MUST include the `## Behavioral Contract` section using the contract approved in sub-step 2b. The form depends on what 2b recorded:
+- Full Gherkin scenarios (+ optional Invariants sub-section) — write inside a fenced ` ```gherkin ` block per plan-format.md.
+- Pointer to spec file — single italicized line; `Acceptance Criteria` section must also be present in the plan.
+- Pointer plus supplemental — pointer line + `### Supplemental scenarios` sub-heading + fenced Gherkin block for the supplements; `Acceptance Criteria` section must also be present.
+- Escape line — single italicized line per the canonical forms in plan-format.md.
+
 Once the plan is complete, write it to the location and format specified in plan-format.md.
 
 ⚠️ CRITICAL: Do NOT ask the user to review the plan. Do NOT present the plan for approval. You MUST complete Steps 3, 4, and 5 (adversarial reviews, consolidation, and revision) BEFORE presenting anything to the user. Tell the user the plan is written and you're now sending it for adversarial review, then immediately proceed to Step 3.
@@ -94,10 +153,12 @@ Once the plan is complete, write it to the location and format specified in plan
 
 **Pre-launch gate:** Before launching reviews, confirm the plan file contains:
 
-1. A populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to Step 2b and complete it.
-2. A populated `## Review depth` section with value `single` or `extended`. If missing or set to anything else, return to Step 2b and set it.
+1. A populated `## Motivation & Context` section. Acceptable states: (a) all four fields populated with substantive content, (b) the section replaced with a single italicized "trivial change" line, or (c) individual fields marked `n/a` with a one-line justification. If the section is missing entirely, or any field is left as a placeholder/empty, return to sub-step 2c and complete it.
+2. A populated `## Review depth` section with value `single` or `extended`. If missing or set to anything else, return to sub-step 2c and set it.
+3. A populated `## Behavioral Contract` section in one of the acceptable forms per `~/workflows/planning/plan-format.md` (full Gherkin scenarios, pointer to spec file, pointer plus supplemental scenarios, or escape line). If the section is missing entirely, return to sub-step 2c (which sources the section content from 2b's captured result) and complete it. If the section uses the **pointer** form but no `## Acceptance Criteria` section is present, the plan is malformed — treat as a missing-section failure and return to sub-step 2c. Back-compat note: this gate runs only when generating a new plan, so legacy plans without the section are never seen here.
+4. **Strategy labels and `Covers:` lines** (Stage 2 — only enforced when this plan-review skill produced the plan, since Claude's `/plan-review` always opts in by labeling). Verify every implementation step heading carries a `— strategy: <value>` suffix with one of the four accepted values (`red-first`, `build-then-test`, `property-based`, `integration-only`). Mixed labeled/unlabeled steps is malformed. For each `integration-only` step, verify the named parent step exists, isn't itself `integration-only`, and that this step's `Covers:` line entries appear identically on the parent's `Covers:` line (parent-superset rule). Verify every step that delivers contract scenarios carries a `**Covers:**` line directly below its heading, parseable per the format spec (comma-space separator; tokens are `"quoted scenario"` or `**bold invariant**`; no embedded double quotes in titles). Verify grouped steps share a strategy (except the integration-only-with-parent grouping). Verify `property-based` steps' Covers entries (invariant titles) exist as bolded entries in the Behavioral Contract's `### Invariants` sub-section. If any check fails, return to sub-step 2c and correct before launching reviews. This gate and `/implement-plan` Step 1's pre-dispatch validation are functionally duplicated for defense in depth and MUST stay in sync — when adding a check to one, mirror it in the other.
 
-Do NOT launch the parallel reviews until both gates pass.
+Do NOT launch the parallel reviews until all four gates pass.
 
 CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. This means sending a single response that contains both an Agent tool call and a Bash tool call (one Agent for Step 3a, one Bash invoking the dispatched second-opinion CLI for Step 3b). Do NOT launch one, wait for it to finish, then launch the other.
 
@@ -234,4 +295,11 @@ Present the user with clear options:
 
 ### TDD Implementation Rules
 
-When implementing the plan (Options 1 or 4), follow each step's TDD cycle strictly as defined in `~/workflows/planning/plan-format.md`: RED (write tests) → RUN (verify failure) → GREEN (minimal implementation) → RUN (verify pass) → REFACTOR. Never write implementation code without a failing test first. Move to the next step only after all tests for the current step are green.
+When implementing the plan (Options 1 or 4), follow each step's declared `test_strategy` per the shape defined in `~/workflows/planning/plan-format.md` § TDD Step Structure:
+
+- **`red-first`** uses strict RED → RUN → GREEN → RUN → REFACTOR (the prior default).
+- **`build-then-test`** uses IMPLEMENT → TESTS (with non-tautology assertion check) → RUN → REFACTOR.
+- **`property-based`** uses INVARIANTS → PROPERTY TESTS → EXAMPLE TESTS → RUN → GREEN → RUN → REFACTOR.
+- **`integration-only`** uses IMPLEMENT → smoke-check existing tests (do not run the named parent step's test if the parent hasn't executed yet).
+
+For plans authored before Stage 2 (no strategy suffixes on any step heading), default every step to `red-first`. Move to the next step only after the current step's tests are green for strategies that produce per-step tests. For `integration-only` steps, move on after the wiring is committed and the smoke-check shows no regressions; the parent step's test verifies coverage when the parent executes (or at end-of-plan via the conformance audit).

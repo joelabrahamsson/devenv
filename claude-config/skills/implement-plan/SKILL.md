@@ -32,6 +32,32 @@ IMPORTANT: This workflow is designed to flow without unnecessary permission prom
    - **Inner-loop test command** — the line specifying the targeted command for RED/GREEN/REFACTOR
    - **Step-grouping allowance** — the standard wording plus any explicit groupings the planner identified (e.g., *"Steps 5a–5d may be grouped"*)
 
+   Also capture the plan's **Behavioral Contract** section verbatim — the entire `## Behavioral Contract` section text including all scenario bodies, the Invariants sub-section (if any), and any escape line. Capture the entire section text, not just titles — subagents need the bodies to evaluate whether a discovered behavior is in-scope. If the section uses the pointer form, additionally read the referenced spec file(s) listed in `## Acceptance Criteria` and capture either the spec files' full contents (preferred, for small spec files) or the scenario titles plus the spec file paths (acceptable for large spec files). If the section uses an escape line, just capture the escape line. If the plan is a legacy plan with no `## Behavioral Contract` section at all, capture the absence as a note — subagents will see "no contract section captured" and treat the contract scope policy as inapplicable.
+
+   **Per-step `test_strategy` and `Covers:` line capture (Stage 2).** For each implementation step in the plan, parse:
+
+   - The strategy from the step's heading (the `— strategy: <value>` suffix). Accepted values: `red-first`, `build-then-test`, `property-based`, `integration-only`.
+   - For `integration-only` steps, the parent step name from the `(covered by Step M)` parenthetical on the heading.
+   - The `**Covers:**` line (if present) immediately below the step heading. Parse per the format spec in `~/workflows/planning/plan-format.md` (comma-space-separated tokens; each token is `"quoted scenario title"` or `**bold invariant title**`; strip outer markers; normalize trailing periods on invariants).
+
+   **Pre-dispatch validation (fail-fast, BEFORE launching any subagent in Step 3).** Run these checks in order. Any failure STOPs the workflow and reports to the user via `AskUserQuestion` with the recovery hint listed. Skip all checks for legacy plans (no strategy suffix on any step) — they default to `red-first` and these rules don't apply.
+
+   1. **Consistency:** if ANY step has a strategy suffix, ALL steps must. Mixed labeled/unlabeled in a single plan is malformed. Recovery: 'Edit the plan file directly to add `— strategy: <value>` suffixes to the unlabeled steps (or remove suffixes from all steps to opt out of Stage 2), then re-run `/implement-plan`.'
+   2. **Valid values:** every captured strategy must be one of the four accepted values. Recovery: 'Edit the plan file to correct the invalid strategy value, then re-run `/implement-plan`.'
+   3. **`integration-only` parent existence:** for each `integration-only` step, the parent must exist in the plan, be referenced by step number, and NOT itself be `integration-only` (chained `integration-only` is malformed). Recovery: 'Return to `/plan-review` sub-step 2c, revise the affected steps (change parent reference, or change the integration-only step to red-first), and re-run adversarial review on the changed section.'
+   4. **Grouped-step strategy consistency:** for each explicit group in the step-grouping allowance, verify all steps in the group share the same `test_strategy` — OR the group is the explicit integration-only-with-parent grouping. Mixed-strategy groups are malformed. Recovery: 'Edit the plan to either match strategies within the group or remove the grouping.'
+   5. **`Covers:` line completeness:** for every labeled step that delivers contract scenarios or invariants (the plan has a populated Behavioral Contract and the step contributes to it), a `**Covers:**` line MUST be present directly below the step heading. Skipped for escape-line contracts. Recovery: 'Edit the plan to add the Covers line.'
+   6. **`Covers:` line parse:** every `**Covers:**` line must parse cleanly. Parse failure is malformed. Recovery: 'Edit the plan to fix the Covers line syntax; consult plan-format.md for the format spec (comma-space-separated tokens; double-quoted scenarios; bold invariants; no embedded double quotes in titles).'
+   7. **Parent-superset rule for `integration-only`:** for each `integration-only` step N with parent step M, M's `Covers:` line must include every entry on N's `Covers:` line (identical canonical titles, no paraphrasing). Recovery: 'Edit the parent step's Covers line to add the missing scenario/invariant titles.'
+   8. **`property-based` contract-invariant existence:** for each `property-based` step, every invariant title in its `Covers:` line must exist as a bolded entry in the plan's `## Behavioral Contract` `### Invariants` sub-section. Recovery: 'Either add the invariant to the contract (revise via `/plan-review`) or change the step to a different strategy.'
+   9. **Strategy/spec-test consistency:** if the plan has an `## Acceptance Criteria` section, any step whose `Covers:` line references a scenario whose canonical title matches a test name in the listed spec files MUST use `red-first` strategy. Steps satisfying spec scenarios with `build-then-test`, `property-based`, or `integration-only` are malformed. Recovery: 'Either change the step to `red-first` or revise the Acceptance Criteria to remove the affected spec file.'
+
+   The plan-review pre-launch gate (per `claude-config/skills/plan-review/SKILL.md` Step 3 item 4) and this pre-dispatch validation gate are functionally duplicated for defense in depth and MUST stay in sync — when adding a check to one, mirror it in the other.
+
+   **Pass-through to subagent prompts.** Each step's parsed Covers list is passed verbatim into that step's subagent prompt (so subagents know which scenarios their tests must cover) and into the conformance audit prompt (so the audit can map promises to steps).
+
+   **Incoming integration-only coverage map (for parent steps).** Build a child-to-parent coverage map by scanning all `integration-only` steps and their named parents. For each parent step, record the union of all child `integration-only` steps' Covers entries that name this parent. When the parent step is dispatched to its subagent, the prompt explicitly lists the incoming coverage as additional scenarios/invariants the parent's tests must cover (in addition to the parent step's own Covers entries). This guards against the planner forgetting to mirror integration-only Covers into the parent's Covers; even if validation check 7 above somehow passed, the parent's subagent still sees the complete list of obligations.
+
 5. Check the project's CLAUDE.md and AGENTS.md (in the workspace root) for a regression policy marker. Look for a line or section indicating the regression bar should be deferred to end-of-plan — the canonical phrasing is `Regression policy: defer to end-of-plan` (case-insensitive match is fine; equivalent phrasing in a "Regression Policy" section also counts). Record one of:
    - **per-commit** (default — no marker found): subagents run the regression bar at each commit boundary, as the plan specifies.
    - **deferred**: subagents run only inner-loop targeted tests at commits; the orchestrator runs the regression bar once at Step 5 (end of plan).
@@ -59,7 +85,57 @@ Work through each task in order. For each task (or group of closely related task
 2. Launch an Agent with `model: sonnet` to implement the step. The agent prompt should tell it to:
    - Read the plan file at `<plan-file-path>` and implement step N (specify which step number(s))
    - Read the project's CLAUDE.md / AGENTS.md for conventions and patterns
-   - Follow strict TDD: RED (write failing tests) → RUN (confirm failure) → GREEN (minimal implementation) → RUN (confirm pass) → REFACTOR (if needed)
+   - **Strategy-specific shape.** Follow the TDD-cycle shape that matches this step's `test_strategy` (captured in Step 1, passed verbatim in the prompt). Plans without strategy labels default to `red-first` for every step. The orchestrator includes one of the four prompts below verbatim, chosen by the captured strategy:
+
+     **`red-first`** (default; current strict TDD):
+
+     > "Follow strict TDD: RED (write failing tests targeting the contract scenarios listed on this step's `Covers:` line, plus edge cases not in the contract; use the scenario-and-invariant test naming rule for the Covers-line items) → RUN (confirm failures for the expected reasons) → GREEN (minimum implementation) → RUN (confirm tests pass) → REFACTOR (if needed)."
+
+     **`build-then-test`:**
+
+     > "Follow build-then-test: IMPLEMENT the code first, following the pattern named in the step description (the step prose should name a specific anchor file or component). Then write TESTS that capture the new behavior as regression guards — tests must cover every scenario listed on this step's `Covers:` line, named per the scenario-and-invariant test naming rule (substring of canonical title).
+     >
+     > **Non-tautology safeguard (required).** For each test you write, you MUST verify the test would FAIL if the implementation body were deleted or replaced with a stub returning a hard-coded wrong value. Tests must assert SPECIFIC OUTPUT VALUES, not merely that no exception is raised, not merely that the function returns something. Demonstrate this in your summary: for one representative test, briefly state what mutation to the implementation would make the test fail. If you cannot identify such a mutation, your test is tautological and must be rewritten before proceeding.
+     >
+     > Run tests, verify all pass, then REFACTOR if needed. The test-first sequencing is deliberately not used for this step because the existing pattern named in the step prose provides the structural anchor; the non-tautology safeguard provides the collusion guard that would otherwise come from RED-first sequencing."
+
+     **`property-based`:**
+
+     > "Follow property-based TDD:
+     >
+     > 1. INVARIANTS — Reference the invariants from this step's `Covers:` line. Each invariant on the Covers line corresponds to a bolded entry in the verbatim Behavioral Contract `### Invariants` sub-section passed below — pre-dispatch validation already confirmed this. Read each referenced invariant's full text to understand the property to test.
+     >
+     > 2. PROPERTY TESTS — Write property-based tests using the project's property-testing framework (named in the step description). Each property test's name/description MUST contain the referenced invariant's bolded title as a substring.
+     >
+     > 3. EXAMPLE TESTS — Write 2–3 concrete example tests that cover the scenarios listed on this step's `Covers:` line (the non-invariant entries).
+     >
+     > 4. RUN — Verify both property tests and example tests fail.
+     >
+     > 5. GREEN — Implement.
+     >
+     > 6. RUN — Verify all tests pass.
+     >
+     > 7. REFACTOR if needed."
+
+     **`integration-only`:**
+
+     > "Follow integration-only: this step is wiring or declaration; do NOT add a new per-step test cycle.
+     >
+     > 1. IMPLEMENT — Build the wiring or declaration described in the step. The contract scenarios listed on this step's `Covers:` line are covered by Step `<parent-step-number>`'s test, NOT by a per-step test you write.
+     >
+     > 2. RUN — Run the project's existing test suite (or, if the regression policy is deferred, a targeted smoke check) to confirm no regressions in already-shipped tests. **Do NOT attempt to run Step `<parent-step-number>`'s test if Step `<parent-step-number>` has not yet executed in this plan** (the parent step may come later in the plan order; its test may not exist in the diff yet). The end-of-plan conformance audit will verify the parent's test exists, passes, and covers the scenarios listed on this step's Covers line.
+     >
+     > **Out-of-contract handling.** If, during IMPLEMENT, you discover a behavioral addition not in the contract (e.g., a missing middleware call that would change security or routing behavior), STOP before committing. Emit the OUT_OF_CONTRACT_BEHAVIOR sentinel per the rules below. If you have already written the wiring code (uncommitted), note the uncommitted changes in your summary so the orchestrator can decide whether to revert or build on them.
+     >
+     > **Grouped-step handling.** If this `integration-only` step is grouped with its parent step (per the explicit integration-only-with-parent grouping option), the wiring and the parent's test land together in a single commit. **Sequencing within the grouped subagent run is fixed:** first complete this integration-only step's IMPLEMENT (set up the wiring); only THEN begin the parent step's full TDD shape. Reversing the order would cause the parent's RED-phase tests to fail for the wrong reason (missing wiring rather than missing implementation)."
+
+     **Contract-scope preflight** (applies to ALL four strategies before any IMPLEMENT or RED phase): "Compare the step's intended behavior — as expressed in the step prose, the `Covers:` line, and the verbatim Behavioral Contract passed below — against what's currently in the contract. If the step requires a new user-facing capability or distinct named failure mode NOT in the contract, STOP and emit the `OUT_OF_CONTRACT_BEHAVIOR: <description>` sentinel BEFORE writing any code or tests. Do not commit any work before emitting the sentinel."
+
+     **Covers: list for this step** (passed verbatim from Step 1's parsed result):
+
+     ```
+     <verbatim Covers list for this step + incoming-coverage map entries if this step is a named integration-only parent>
+     ```
    - Report back: what files were created/modified, what tests were added, whether all tests pass, and the exact test command output (exit code and any failures)
    - **Failing tests policy**: "Failing tests are NEVER acceptable. Do NOT dismiss any test failure as 'flaky', 'intermittent', or 'unrelated to my changes'. If ANY test fails, you must investigate and attempt to fix it. If you cannot fix it without changing application behavior or weakening the test, STOP and report the failure with the full test output. Never silently proceed past a failing test."
    - **Inner-loop test command**: "During RED/GREEN/REFACTOR, run targeted tests against the file(s) under change using the command captured from the plan (passed verbatim below). Do NOT run the project's full test suite for inner-loop verification."
@@ -80,6 +156,25 @@ Work through each task in order. For each task (or group of closely related task
      <verbatim step-grouping allowance + any explicit groupings captured in Step 1>
      ```
    - **If acceptance criteria exist**: "The following files are SPECIFICATION TESTS — human-owned and read-only. Do NOT modify them under any circumstances: `<list spec file paths>`. If your implementation contradicts a spec test (the test fails and you believe the test is wrong), STOP and report the conflict. Do not modify the spec test to make it pass."
+   - **Contract scope policy** (skip this clause if the plan is a legacy plan with no captured Behavioral Contract section): "The plan's `Behavioral Contract` section (and any spec files listed in `Acceptance Criteria`) defines the user-observable behavior this implementation step must deliver. The full text of the relevant scenarios and invariants is passed below verbatim. During implementation, if you discover a **new user-facing capability** or a **distinct named failure mode** that is not represented by any scenario or invariant in the contract, you must STOP and report this back to the orchestrator with an explicit sentinel in your summary — do NOT silently implement the new behavior. Sentinel format (these rules are strict; the orchestrator scans for them programmatically):
+
+     - The sentinel MUST be `OUT_OF_CONTRACT_BEHAVIOR: <one-line description of the discovered behavior>` exactly.
+     - The sentinel MUST appear on its **own line** in your final summary text, with **no leading whitespace** (column 0).
+     - The sentinel MUST appear in the prose summary you return to the orchestrator, **not** inside a quoted code block, a fenced block, a literal string in code you wrote, or a quoted piece of test output. The orchestrator scans your summary prose only.
+     - You MUST **not commit any work for the current step or group** before emitting the sentinel. The orchestrator's resolution path assumes the subagent stopped before making partial progress. If you have already committed work and then discover the out-of-contract behavior, your summary must (a) include the sentinel and (b) note in the same summary which commits were made so the orchestrator can decide whether to revert or build on them.
+
+     Do NOT call `AskUserQuestion` from this subagent — the orchestrator handles user prompts. Your job is to stop, report, and wait. The orchestrator will pause when it sees the sentinel and ask the user how to proceed.
+
+     **Threshold for halting:** the sentinel is for *new distinct user-facing capabilities or named failure modes*, not every implementation detail that happens to be observable. Sub-behaviors of an already-contracted scenario (e.g., a 400 response for a missing required field when the scenario already says 'valid input succeeds and invalid input is rejected') do NOT trigger the sentinel — they are part of delivering the contracted scenario. New top-level capabilities (e.g., 'add a forgot-password link', 'new admin-only export endpoint') and new named failure modes the user would discover (e.g., 'reject rate-limited requests with HTTP 429') DO trigger the sentinel. When in doubt, prefer to surface — false positives are cheap; silent contract expansion is not.
+
+     **Verbatim contract scope follows.** Implement only what is in the contract. The contract is enforced by the `plan-conformance` audit after all steps complete.
+
+     ```
+     <verbatim Behavioral Contract section text captured in Step 1>
+     ```"
+   - **Scenario and invariant test naming**: "When you write a test that verifies a Behavioral Contract scenario (or an Acceptance Criteria spec scenario, or an invariant), name the test such that its name or description contains the canonical title as a **substring**. The canonical title for a scenario is the text after `Scenario:` in the Gherkin block. The canonical title for an invariant is the bolded title text (the text inside `**...**` at the start of the invariant's bullet, with the trailing period stripped). Use identifier-safe paraphrase only where the test framework requires it (snake_case in Python, dashes-to-spaces or quoted strings in BDD frameworks, plain string in JavaScript `it()`/`test()`). For parameterized or table-driven tests, the canonical title must appear in the compound test name (e.g., `test_login_valid_credentials[admin-user]` is acceptable for a scenario titled 'Login with valid credentials'). Tests for sub-behaviors, edge cases, and implementation details that are NOT a contract scenario or invariant can be named freely. The substring rule is what enables the post-implementation `plan-conformance` audit to mechanically map contract items to tests.
+
+     This naming rule applies whenever the subagent writes new tests — `red-first`, `build-then-test`, and `property-based` strategies all write tests. For `integration-only` steps, no new tests are written; the parent step's tests carry the naming."
 
    Also include in the prompt:
    - A short list of files created/modified by previous steps (so the agent has context on what already exists)
@@ -89,9 +184,22 @@ Work through each task in order. For each task (or group of closely related task
    - If it fails after 2 attempts, stop and ask the user for guidance via AskUserQuestion — include the exact test failure output
    - Do NOT proceed to the next step while any test is failing, regardless of the agent's assessment of the failure's relevance
 
-4. Mark the task as `completed`
+   **For `build-then-test` steps specifically (Stage 2):** also verify the subagent's summary includes the non-tautology demonstration (a statement of what mutation to the implementation would cause a representative test to fail). If the demonstration is missing, send the subagent a follow-up message: 'You did not include the non-tautology demonstration required for build-then-test steps. For one representative test, state what mutation to the implementation would cause it to fail.' Do NOT mark the step `completed` until the demonstration is present.
 
-5. Move to the next task only after the previous step's tests are confirmed green
+4. **Scan the subagent's summary prose for OUT_OF_CONTRACT_BEHAVIOR sentinels.** Scan the subagent's final prose reply (not tool output, not quoted code blocks) for any line matching the regex `^OUT_OF_CONTRACT_BEHAVIOR: .+$` (start of line, exact prefix, non-empty description). If one or more match, the subagent has paused on a possible contract-scope expansion. For each sentinel line, call `AskUserQuestion` (one question per sentinel; if multiple sentinels appear in one summary, handle them sequentially) to surface the discovery with these options:
+
+   1. **Add to contract** — update the plan's `Behavioral Contract` section to include the discovered behavior (edit the plan file inline, adding the new scenario to the relevant Feature block or, if needed, a new `### Supplemental scenarios` block). Record the addition in the plan's `## Revision Notes` section noting whether it's a missed scenario (planning oversight) or a deliberate mid-implementation scope expansion. Then re-launch the implementation for the current step (see grouped-step note below) with the updated contract embedded in the subagent prompt and an explicit `resolved-decisions` block listing the just-decided sentinel so the subagent doesn't re-emit the same sentinel.
+   2. **Defer** — mark the discovered behavior as explicitly out of scope for this plan (note the deferral in the plan's `## Revision Notes` section, including the sentinel description). Then re-launch the implementation for the current step with the same `resolved-decisions` block, instructing the subagent not to implement the deferred behavior. The contract itself is NOT updated; the resolved-decisions block tells the subagent to stop re-flagging this specific behavior.
+
+   **Grouped-step handling.** If the sentinel was emitted during a subagent call covering grouped steps (per the step-grouping allowance), 'the current step' means **the entire group**. Before re-launching, check `git log` to see which steps in the group have already been committed and re-launch only the *remaining* steps in the group. The re-launch prompt must explicitly list which steps are already done and which remain.
+
+   **Repeated sentinels.** The `resolved-decisions` block passed back into the re-launched subagent must list every sentinel the user has already resolved for the current step or group (typically one, but could be more if multiple discoveries happened in one subagent run). The subagent prompt must include: 'Do not re-emit any sentinel from the resolved-decisions block; act according to the decision (implement, defer) for each.' If the subagent emits a *new* sentinel (a different out-of-contract behavior the user has not yet resolved), handle it as normal. If a subagent re-emits a sentinel that is already in the resolved-decisions block, surface this to the user as a subagent-bug warning before deciding whether to retry or escalate.
+
+   Do NOT proceed to the next step while any unresolved `OUT_OF_CONTRACT_BEHAVIOR` sentinel is pending. Resolve all sentinels from each subagent run before launching the next.
+
+5. Mark the task as `completed`
+
+6. Move to the next task only after the previous step's tests are confirmed green AND all sentinels from the previous step's subagent runs are resolved
 
 **Grouping steps:** Follow the grouping allowance and any explicit groupings the plan specifies in its "Implementation Approach" section. If the plan calls out specific steps as groupable, group them into a single agent call; otherwise, do one step per call.
 
@@ -118,6 +226,16 @@ Once all tasks are complete, improve the code around the implementation before f
 
 Run the full test suite yourself (via Bash) to confirm everything is green end-to-end. This catches any issues between steps — including any changes made by the boy scout pass.
 
+Where the project's test runner supports verbose or reporter modes that emit per-test names with pass/fail status (e.g., `pytest -v`, `vitest --reporter=verbose`, `jest --verbose`, `cargo test -- --nocapture`), use that mode. Save the test-runner output to a file at `/tmp/plan-conformance-test-run.txt`. The conformance audit (Step 6) uses this file to verify scenario-promise tests actually ran and passed.
+
+If the project's runner produces only summary output by default and verbose mode is not available without project-level configuration changes, save the summary output to the same file with this exact line as its first line:
+
+```
+# Per-test names unavailable from this runner — summary output only.
+```
+
+This is a *recognized degraded mode* — the conformance audit tolerates it and falls back to per-spec-file evidence rather than per-scenario evidence (see plan-conformance-criteria.md). Do NOT skip saving the file in degraded mode; the file path is part of the conformance audit's input contract.
+
 If the project's regression policy is **deferred** (captured in Step 1), this is the SOLE full-regression run for the entire plan. It must pass before proceeding to Step 6 (Plan Conformance Audit).
 
 **If acceptance criteria exist**: Also run the spec tests explicitly and report their status separately. All spec test scenarios must pass — this is the acceptance gate. If any spec test fails:
@@ -142,13 +260,29 @@ Before code review, verify that every concrete behavior the plan promised is act
 2. Launch the `plan-conformance` agent with a prompt that includes:
    - The path to the plan file — tell it to read the file itself
    - The full git diff (the agent can't run git, so this must be in the prompt)
+   - The path to the test-run output file saved in Step 5 (typically `/tmp/plan-conformance-test-run.txt`). If the file starts with the `# Per-test names unavailable from this runner — summary output only.` marker, note in the prompt that the audit must use its degraded-mode fallback per `plan-conformance-criteria.md` — this is a recognized mode, not a missing-input condition.
    - A reminder to read `~/workflows/planning/plan-conformance-criteria.md` for the output format
    - **Output instruction**: "Write your full audit (promise table, gaps, unpromised additions, verdict) to `/tmp/plan-conformance-audit.md`. In your final message back to the orchestrator, return ONLY: the verdict (`pass` / `gaps` / `unscorable`), the count of gaps by severity, and the file path. Do NOT paste the full table or analysis into your final message — the orchestrator will read the file. This avoids subagent-result truncation."
 
 3. After the agent completes, read `/tmp/plan-conformance-audit.md` to get the full audit, then examine its verdict:
    - **`pass`** — proceed to Step 7
-   - **`gaps`** — default to implementing each missing/partial promise: launch a Sonnet agent to deliver the missing behavior, then re-run the audit. The plan said this would happen, so closing the gap is the conservative move. Only stop and consult the user if (a) the implementation fix fails after one retry, or (b) the gap suggests the plan itself is wrong — e.g., delivering the promise would conflict with code that was deliberately added during implementation, or it would require scope changes the plan didn't anticipate. In the consult case, present the relevant gaps with your assessment and ask whether to implement, defer (mark the promise out of scope in the plan), or acknowledge and proceed.
+   - **`gaps`** — see the malformed-plan marker routing below before deciding whether to auto-fix.
    - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this in your end-of-step summary and proceed to Step 7; do not re-run.
+
+   **Malformed-plan marker routing (Stage 2).** Before auto-launching a Sonnet fix subagent for `gaps`, scan the audit's `missing` and `partial` rows for any of the following malformed-plan markers in the Evidence/Gap column:
+
+   - `malformed-chain` — `integration-only` step points at another `integration-only` step, or names a parent that doesn't exist
+   - `planning-error: no step claims ownership` — a contract scenario is not listed on any step's `Covers:` line
+   - `parent-Covers-not-superset` — `integration-only` step's Covers entry not on parent's Covers line
+
+   If ANY such marker appears, do NOT auto-spawn a fix subagent — the fix is a planning revision, not a code change, and auto-fix would produce code that can't satisfy the audit. Instead, STOP and call `AskUserQuestion` summarising the malformed-plan rows with these options:
+
+   1. **Revise the plan** — pause `/implement-plan`; the user fixes the plan manually (or via `/plan-review`); re-run `/implement-plan` afterwards.
+   2. **Abort and review** — pause `/implement-plan`; treat as a planning failure requiring human attention.
+
+   For `gaps` rows WITHOUT malformed-plan markers (regular missing-implementation or missing-test gaps), use the existing auto-fix flow: launch a Sonnet agent to deliver the missing behavior, then re-run the audit. The plan said this would happen, so closing the gap is the conservative move. Only stop and consult the user if (a) the implementation fix fails after one retry, or (b) the gap suggests the plan itself is wrong — e.g., delivering the promise would conflict with code that was deliberately added during implementation, or it would require scope changes the plan didn't anticipate. In the consult case, present the relevant gaps with your assessment and ask whether to implement, defer (mark the promise out of scope in the plan), or acknowledge and proceed.
+
+   In legacy plans (no Stage 2 labels), malformed-plan markers cannot appear (no `Covers:` lines, no `integration-only` strategy); the existing auto-fix flow continues to apply unchanged.
 
    Do NOT proceed to Step 7 while the audit reports unresolved `gaps`.
 
