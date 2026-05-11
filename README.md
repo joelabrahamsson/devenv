@@ -186,6 +186,8 @@ Each plan produced by `/plan-review` includes a `## Behavioral Contract` section
 
 Each implementation step declares a `test_strategy`: `red-first` (the strict TDD default), `build-then-test` (pattern-following work with a non-tautology safeguard), `property-based` (pure transformations with extractable invariants), or `integration-only` (pure wiring or declaration, covered by a named parent step). Per-step `**Covers:**` lines map contract scenarios and invariants to the owning step. The post-implementation conformance audit verifies every promise maps to a test that ran and passed; misclassified `integration-only` steps fail the audit. See `~/workflows/planning/plan-format.md` § TDD Step Structure for the classification heuristics.
 
+When the plan opts into labels and the distribution includes any non-`red-first` strategy, Claude's `/finalize` carries the distribution forward into the generated ADR's Decision section as a Test strategy distribution paragraph, preserving the verification design choice durably after the plan file is deleted. Codex's `$finalize` does not yet do this — Codex-config parity for Stages 1+2 (which this surfacing step rides on) is a tracked follow-up.
+
 Strategy labels are opt-in per the format spec; Claude's `/plan-review` always opts in. Plans without labels (legacy or Codex-CLI-authored) are valid and treated as all-`red-first` for back-compat.
 
 ### Patterns and workflow audit

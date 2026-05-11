@@ -34,6 +34,8 @@ Understand what was implemented by examining:
 
 Also scan the plan for **exemplar references** that signal a Patterns entry may be worth proposing in Step 5: explicit `mirror <path>` language in any step's prose, or the canonical Patterns citation phrase `per Patterns: "<shape title>"` (see `~/workflows/planning/patterns-format.md`). Record any matches; Step 5 uses them as its trigger signal.
 
+Also scan the plan for **per-step `test_strategy` labels** (Stage 2). Scan ONLY the implementation-step headings under the plan's `## Implementation Steps` section — do NOT count heading-like text that appears inside step prose, fixtures, or examples elsewhere in the plan. For each implementation-step heading of the form `### Step N: Title — strategy: <value>` (the value being one of `red-first`, `build-then-test`, `property-based`, `integration-only`; `integration-only` headings REQUIRE a ` (covered by Step M)` parenthetical immediately after the strategy value per `~/workflows/planning/plan-format.md` § TDD Step Structure), record the strategy. Build a distribution map (counts per strategy) across all labeled steps. If NO step in `## Implementation Steps` carries a `— strategy:` suffix, the plan is unlabeled (legacy / pre-Stage-2 or authored via the Codex CLI workflow); record label-mode as `unlabeled` and skip the distribution map. If SOME steps in `## Implementation Steps` are labeled and others are not, the plan is malformed per `~/workflows/planning/plan-format.md` § TDD Step Structure; stop and surface the malformed-plan finding to the user before proceeding. The distribution map and label-mode feed Step 4's ADR generation.
+
 ## Step 3: ADR Worthiness Decision
 
 Not every implementation warrants an ADR. Decide based on the Motivation & Context section and the actual diff:
@@ -84,7 +86,13 @@ Draw primarily from the plan's **Motivation & Context** section — specifically
 ## Decision
 
 <What was decided? What approach was chosen and why?
-Draw primarily from Motivation & Context's **Alternatives considered** and **Decision rationale**. Use Implementation Approach and Revision Notes only to ground the discussion in what was concretely built.>
+Draw primarily from Motivation & Context's **Alternatives considered** and **Decision rationale**. Use Implementation Approach and Revision Notes only to ground the discussion in what was concretely built.
+
+**Test strategy distribution** (Stage-2 only; conditional). If the plan's captured label-mode (from Step 2) is `labeled` AND the distribution map includes at least one strategy other than `red-first`, append a paragraph in this form:
+
+> **Test strategy distribution.** \<count\> red-first, \<count\> build-then-test, \<count\> property-based, \<count\> integration-only. \<Optional one-sentence rationale — include ONLY when the plan's Motivation & Context, Implementation Approach, or step prose explicitly supports it; do NOT infer or fabricate a rationale.\>
+
+List strategies in the fixed order shown above (red-first, build-then-test, property-based, integration-only). Omit any strategy with zero count. Omit the entire paragraph if the plan was unlabeled (label-mode `unlabeled`) OR the distribution is uniform `red-first` (the legacy default conveys no design signal).>
 
 ## Behavioral Contract
 
@@ -114,6 +122,7 @@ The ADR should capture the *reasoning* behind decisions PLUS the *behavioral spe
 - What constraints influenced the design
 - What the adversarial reviews caught and how it changed the approach (from the plan's revision notes)
 - The user-observable behavior the change delivers (Behavioral Contract section)
+- The test strategy distribution when it represents a meaningful design choice (Decision section sub-paragraph, Stage-2 labeled plans only)
 - Anything non-obvious that a future developer (or AI assistant) should know
 
 ## Step 5: Propose Patterns Entry
