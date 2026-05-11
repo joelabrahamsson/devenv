@@ -49,6 +49,15 @@ If the convention docs also state a regression *policy* such as `Regression poli
 - Fall back to Explore agents, but scope them to the specific area of the codebase relevant to the task — not the entire project
 - Limit to 1 Explore agent if the task is focused, 2 maximum if it spans multiple areas
 
+**Patterns section consultation.** If the agent doc (CLAUDE.md or AGENTS.md) contains a `## Patterns` heading, read the section. See `~/workflows/planning/patterns-format.md` for the section's purpose, format, and canonical citation phrase — entries map recurring problem-shapes to canonical exemplar files, and consulting the section here saves the downstream subagent grep-storm that would otherwise rediscover the same patterns from scratch. For each entry, verify the cited file path resolves (use `Read` or `ls`). If any entries are stale (cited file missing), surface them to the user via `AskUserQuestion` with options:
+
+- **`Fix the entry now`** (recommended) — on this choice, ask a follow-up `AskUserQuestion` with a free-text input ("Other" path) for the corrected exemplar path. The user types the new path, or the literal text `remove` to delete the entry from `## Patterns`, or `keep as-is` to leave the entry in place as best-effort guidance for this plan only. Apply the response verbatim by editing the agent doc (Read → Edit), then continue plan design.
+- **`Proceed without fixing for now`** — leave the entry untouched and treat it as best-effort guidance for this plan only.
+
+Consult the section before greping the codebase for "the right pattern" — if a matching entry exists, use the cited exemplar directly. The matching entry (by shape title) is the input to sub-step 2c's per-step pattern citation. If the section is absent or empty, that's a graceful no-op — proceed without it and the steady-state curation paths (`/finalize` proposes incrementally, `/workflow-audit` back-fills in batch) will populate it over time.
+
+**Coupling note with `/workflow-audit`.** `/plan-review` performing inline staleness fixes is a deliberate small expansion of plan-review's responsibilities (consume + maintain on detected staleness). `/workflow-audit`'s Stage A staleness check remains valuable for projects that haven't recently run `/plan-review`, and for batch fixes across many stale entries — `/plan-review` only sees the entries relevant to the current plan, not the full section. `/plan-review` does NOT propose new Patterns entries; that's `/finalize`'s job (incremental) and `/workflow-audit`'s job (batch).
+
 ### 2b: Derive Behavioral Contract
 
 This sub-step derives the Gherkin scenarios that capture the user-observable behavior the implementation must deliver, presents them to the user, and gates on approval before plan design (sub-step 2c) begins. The contract becomes the high-leverage human checkpoint in a workflow the user otherwise trusts not to require code or test review.
@@ -116,6 +125,18 @@ Sub-step behavior:
   **Spec-test interaction.** Steps that satisfy scenarios listed in the plan's `## Acceptance Criteria` section MUST use `red-first` strategy with the existing spec test as the RED phase. The other three strategies are not permitted for spec-satisfying steps. If a planner needs a different shape for such a step, revise the Acceptance Criteria to remove that scenario from the spec, or split the step.
 
 - **Write the `Covers:` line on every contract-bearing step.** When the plan has a populated (non-escape) Behavioral Contract, for each step that delivers contract scenarios or invariants, add a `**Covers:**` line directly below the step heading listing the canonical titles per the parsing rules in plan-format.md. For `integration-only` steps, the Covers line names what the parent step's test must cover; the parent step's own Covers line MUST be a superset (include all the same canonical titles, no paraphrasing). Verify this superset rule before completing plan design — the pre-launch gate (Step 3) and `/implement-plan` validation will both check it, so catching mismatches here saves a round-trip.
+
+- **Cite matching Patterns entries in step prose.** When sub-step 2a found a `## Patterns` section in the agent doc, check each step against the entries. If an entry's shape matches the work the step will implement, cite it inline using the **canonical citation phrase** from `~/workflows/planning/patterns-format.md`:
+
+  ```
+  per Patterns: "<shape title>"
+  ```
+
+  Literal: the text `per Patterns:`, a single space, then the entry's shape title verbatim in **double quotes** (matching the entry's bolded shape line exactly). Place the citation alongside a `mirror <path>` reference so the step reads as a coherent instruction. Example step prose:
+
+  > 3.1 IMPLEMENT — Add `src/api/tags.ts`. Mirror `src/api/categories.ts` per Patterns: "New CRUD resource (API)" — same error envelope shape, pagination params, validation order.
+
+  This phrase is what `/implement-plan` subagents see when reading the step, and what `/finalize` searches for at commit time when deciding whether to propose a new Patterns entry. Because the citation is exact-match rather than fuzzy, the downstream skills can rely on it without ambiguity. Use the exemplar file path from the entry as the step's structural anchor — subagents don't need to re-grep to find the right file.
 
 While designing the plan, also:
 - Determine the project's targeted (inner-loop) test command by inspecting tooling — `package.json` scripts, `pyproject.toml`, `Cargo.toml`, project convention docs, etc. This concrete command goes into the "Inner-loop test command" line of the Implementation Approach section.

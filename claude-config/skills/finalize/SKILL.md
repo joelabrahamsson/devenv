@@ -1,6 +1,6 @@
 ---
 name: finalize
-description: Assess whether the implementation warrants an ADR (when warranted, generate one drawing on the plan's Motivation & Context); draw on Motivation & Context to write a richer commit message either way; clean up the plan file; then commit/push or create a PR.
+description: Assess whether the implementation warrants an ADR (when warranted, generate one drawing on the plan's Motivation & Context); propose a Patterns entry for the project's agent doc when the implementation mirrored an existing exemplar; draw on Motivation & Context to write a richer commit message either way; clean up the plan file; then commit/push or create a PR.
 argument-hint: "[path to plan file]"
 user-invocable: true
 allowed-tools: "Write Edit Read Glob Grep Bash Agent AskUserQuestion"
@@ -32,6 +32,8 @@ Understand what was implemented by examining:
 - The git diff or recent commits (`git log --oneline -20` and `git diff` or `git diff HEAD`) — used to verify what was actually shipped versus what the plan promised.
 - Any CLAUDE.md or AGENTS.md for project conventions.
 
+Also scan the plan for **exemplar references** that signal a Patterns entry may be worth proposing in Step 5: explicit `mirror <path>` language in any step's prose, or the canonical Patterns citation phrase `per Patterns: "<shape title>"` (see `~/workflows/planning/patterns-format.md`). Record any matches; Step 5 uses them as its trigger signal.
+
 ## Step 3: ADR Worthiness Decision
 
 Not every implementation warrants an ADR. Decide based on the Motivation & Context section and the actual diff:
@@ -53,7 +55,7 @@ Not every implementation warrants an ADR. Decide based on the Motivation & Conte
 
 Form your assessment, then present it via `AskUserQuestion`: *"My read: ADR [warranted | not warranted] because [one-sentence reason]. Proceed?"* with options `Yes — generate ADR`, `No — skip ADR`, and `Override — let me explain`. Do NOT auto-proceed.
 
-If the user chooses **skip ADR**, jump to Step 5 (Remove Plan File). The commit message in Step 6 still draws on Motivation & Context to explain the *why*.
+If the user chooses **skip ADR**, proceed to Step 5 (Propose Patterns Entry). The commit message in Step 7 still draws on Motivation & Context to explain the *why*.
 
 ## Step 4: Generate ADR
 
@@ -114,18 +116,65 @@ The ADR should capture the *reasoning* behind decisions PLUS the *behavioral spe
 - The user-observable behavior the change delivers (Behavioral Contract section)
 - Anything non-obvious that a future developer (or AI assistant) should know
 
-## Step 5: Remove Plan File
+## Step 5: Propose Patterns Entry
+
+This step gives the implementer a low-friction way to register newly-canonical exemplars in the project's `## Patterns` section while the work is still fresh. See `~/workflows/planning/patterns-format.md` for the section's format, location, and canonical citation phrase.
+
+**1. Detect the signal — plan-prose signals only.**
+
+Use the exemplar references recorded in Step 2. Two acceptable signals:
+
+- **(a)** Explicit `mirror <path>` language in any step's prose.
+- **(b)** The canonical Patterns citation phrase `per Patterns: "<shape title>"` (literal text per `patterns-format.md`).
+
+If neither (a) nor (b) is present, skip the rest of this step entirely — no prompt, proceed to Step 6. Do NOT scan the implementation diff for structural similarity to other files; that is `/workflow-audit`'s job, and duplicating it at commit time risks spurious prompts and conflates skill responsibilities.
+
+**2. Locate the agent doc and Patterns section.**
+
+Read the project's `CLAUDE.md` and `AGENTS.md` (whichever exists; if both, use whichever already contains a `## Patterns` section, otherwise prefer the doc the project's other skills consult — ask the user if uncertain). Locate the `## Patterns` heading, or note that the section does not yet exist. If the section is missing and the user accepts the proposal in step 5, create the section at the end of the agent doc before appending the entry.
+
+**3. Duplicate / overlap check (skip-without-prompting cases).**
+
+Before drafting any prompt, check for the cases where proposing would be redundant or unwanted:
+
+- If the signal was clause (b) and the citation's shape title is already an entry in `## Patterns`, that entry already exists — skip without prompting.
+- If clause (a) named a `<path>` that is already the **exemplar** of an existing entry (same path on the entry's Exemplar line), the file is already canonical — skip without prompting.
+- If the `## Patterns` section already contains 15 or more entries and accepting would push it past 15, surface that fact to the user in the step 5 prompt (see `patterns-format.md` § Length target) and offer the option to skip, merge with a related existing entry, or accept and grow past the soft cap. Do not silently grow the section past 15.
+
+**4. Draft the proposed entry.**
+
+Following `~/workflows/planning/patterns-format.md` § Entry format, draft a 3–5 line entry:
+- **Shape** — a short noun-phrase the entry is identified by.
+- **Exemplar** — the file path of the canonical example (the file the implementation mirrored, OR the new file if it's strictly cleaner than the original; ask the user if uncertain).
+- **What to mirror** — 1–2 lines naming the specific elements. Pull this content from the plan's Implementation Approach / step prose where the exemplar was named, plus any specifics visible in the diff (validation order, error envelope shape, hook composition, etc.).
+- **Anti-pattern** (optional) — only include if the exemplar has a clearly-deprecated section or transitional code the next implementer should not copy.
+
+**5. Prompt the user via `AskUserQuestion`.**
+
+Present the drafted entry with three options:
+
+- **`Yes — add to this commit`** (recommended) — appends the entry to `## Patterns` in the chosen agent doc and stages the file so the change is part of the same commit as the implementation.
+- **`Edit draft first`** — uses AskUserQuestion's free-text input path (the "Other" option). The user types the revised entry text; the skill applies it verbatim, then re-presents the choice (Yes / Edit again / Skip).
+- **`Skip`** — proceed to Step 6 without modifying the agent doc.
+
+If the duplicate-check in step 3 surfaced a length-cap warning, include that warning in the prompt question text so the user can decide with full context.
+
+**6. Apply on Accept.**
+
+On Yes: append the entry to the section (creating `## Patterns` at the end of the doc if it didn't exist), stage the modified agent doc (`git add CLAUDE.md` or `git add AGENTS.md`), and proceed to Step 6. The Patterns change is part of the same commit as the implementation, which keeps the entry registered atomically with the work it documents.
+
+## Step 6: Remove Plan File
 
 Delete the plan file from `docs/plans/`.
 
-## Step 6: Ship
+## Step 7: Ship
 
 Determine the current git state:
 - What branch are we on?
 - Is it `main` or a feature branch?
 - Are changes staged or unstaged?
 
-Stage all changes: implementation + plan file deletion + ADR if one was generated in Step 4.
+Stage all changes: implementation + plan file deletion + ADR if one was generated in Step 4 + Patterns entry if one was added in Step 5.
 
 Present options based on git state:
 
