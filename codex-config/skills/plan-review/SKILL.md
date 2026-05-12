@@ -191,6 +191,8 @@ Do NOT launch the parallel reviews until all four gates pass.
 
 CRITICAL: You MUST launch both reviews simultaneously. Use `spawn_agent` for the Codex adversarial review and `shell` for the second-opinion CLI in the same turn.
 
+Before launching the reviews, output a one-line user-facing announcement: `Launching parallel plan reviews — Codex + <reviewer-name> (typical 5–15 min each, running in parallel).`
+
 Before launching, write the second-opinion review prompt to a temporary file (prerequisite for the shell call).
 
 ### 3a: Codex Adversarial Subagent Review
@@ -273,6 +275,8 @@ Update the plan file with the revisions. Note what changed and why at the bottom
 ## Step 5b: Extended Round (only when Review depth is `extended`)
 
 Skip this step entirely if the plan's `Review depth` field is `single`. Otherwise, run one additional parallel review on the revised plan. **Hard cap: one extra round only.** Even if round 2 surfaces new critical findings, do NOT run a round 3 — apply the Step 5 triage rule and proceed.
+
+Before launching round 2, output a one-line user-facing announcement: `Launching extended-depth round 2 plan reviews (typical 5–15 min each, running in parallel).`
 
 Round 2 should be framed to look beyond what round 1 anchored on. Use the same parallel-launch mechanics as Step 3 (`spawn_agent` for the Codex adversarial review and `shell` for the second-opinion CLI in the same turn), but with these differences:
 

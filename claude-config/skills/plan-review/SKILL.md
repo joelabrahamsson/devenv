@@ -183,6 +183,8 @@ Do NOT launch the parallel reviews until all four gates pass.
 
 CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls. This means sending a single response that contains both an Agent tool call and a Bash tool call (one Agent for Step 3a, one Bash invoking the dispatched second-opinion CLI for Step 3b). Do NOT launch one, wait for it to finish, then launch the other.
 
+Before launching the reviews, output a one-line user-facing announcement: `Launching parallel plan reviews — Claude + <reviewer-name> (typical 5–15 min each, running in parallel).`
+
 Before launching the reviews, write the second-opinion prompt to a temporary file first (this is a prerequisite for the Bash call). Then, in a single message, launch both:
 
 ### 3a: Claude Adversarial Agent Review
@@ -265,6 +267,8 @@ Update the plan file with the revisions. Note what changed and why at the bottom
 ## Step 5b: Extended Round (only when Review depth is `extended`)
 
 Skip this step entirely if the plan's `Review depth` field is `single`. Otherwise, run one additional parallel review on the revised plan. **Hard cap: one extra round only.** Even if round 2 surfaces new critical findings, do NOT run a round 3 — apply the Step 5 triage rule and proceed.
+
+Before launching round 2, output a one-line user-facing announcement: `Launching extended-depth round 2 plan reviews (typical 5–15 min each, running in parallel).`
 
 Round 2 should be framed to look beyond what round 1 anchored on. Use the same parallel-launch mechanics as Step 3 (one Agent + one Bash invoking the dispatched second-opinion CLI, both in a single message), but with these differences:
 

@@ -80,7 +80,7 @@ Create a task for each implementation step in the plan using TaskCreate. Each ta
 
 Work through each task in order. For each task (or group of closely related tasks):
 
-1. Mark the task as `in_progress` using TaskUpdate
+1. Mark the task as `in_progress` using TaskUpdate. Then output a one-line user-facing announcement before launching the subagent, naming the step number/title (and `test_strategy` label if the plan is Stage 2). Format: `Step N/M — <title> [<strategy>]: launching implementation subagent (typical 5–20 min).` This gives the user something to anchor on during the silent gap until the subagent returns.
 
 2. Launch an Agent with `model: sonnet` to implement the step. The agent prompt should tell it to:
    - Read the plan file at `<plan-file-path>` and implement step N (specify which step number(s))
@@ -197,7 +197,7 @@ Work through each task in order. For each task (or group of closely related task
 
    Do NOT proceed to the next step while any unresolved `OUT_OF_CONTRACT_BEHAVIOR` sentinel is pending. Resolve all sentinels from each subagent run before launching the next.
 
-5. Mark the task as `completed`
+5. Mark the task as `completed`. Then output a one-line user-facing summary of what just finished: file count from the subagent's report (or `git diff --name-only` since launch), one or two key file names, and pass/fail of the inner-loop tests. Format: `Step N/M complete — <N files>, <key file>, tests green. Next: Step N+1 or '<next-phase-name>'.` Keep it terse — this is a heartbeat, not a report.
 
 6. Move to the next task only after the previous step's tests are confirmed green AND all sentinels from the previous step's subagent runs are resolved
 
@@ -206,6 +206,8 @@ Work through each task in order. For each task (or group of closely related task
 ## Step 4: Boy Scout Pass
 
 Once all tasks are complete, improve the code around the implementation before final verification and review.
+
+Before launching the boy scout subagent, output a one-line user-facing announcement: `Launching boy-scout pass over changed files (typical 3–10 min).`
 
 1. Get the list of files changed by the implementation:
    ```
@@ -249,6 +251,8 @@ If tests fail, launch a Sonnet agent to investigate and fix, providing it with t
 
 Before code review, verify that every concrete behavior the plan promised is actually delivered in the diff. Reviewers focused on code quality have repeatedly missed missing-promise cases — this is a dedicated, single-responsibility gate that runs first.
 
+Before launching the audit, output a one-line user-facing announcement: `Running plan-conformance audit on the diff (typical 2–5 min).`
+
 1. Capture the full diff of all changes:
 
    ```bash
@@ -288,11 +292,15 @@ Before code review, verify that every concrete behavior the plan promised is act
 
 4. "Unpromised Additions" listed by the audit are informational — note them in your end-of-step summary so the user sees them, but do not pause for input. They may indicate scope creep that belongs in a separate change; the user can flag any concerns.
 
+5. Output a one-line user-facing summary of the audit result: `Conformance audit: <verdict> (<N gaps>). Next: code review.` (or `Next: pause on malformed-plan markers` if routing to user).
+
 ## Step 7: Code Review
 
 Once the conformance audit passes (or its gaps have been resolved or accepted), launch adversarial code reviews.
 
 CRITICAL: You MUST launch both reviews in the SAME message using multiple tool calls (one Agent for Step 7a, one Bash invoking the dispatched second-opinion CLI for Step 7b). Do NOT launch one, wait for it, then launch the other.
+
+Before launching the reviews, output a one-line user-facing announcement: `Launching parallel code reviews — Claude + <reviewer-name> (typical 5–15 min each, running in parallel).`
 
 Before launching, prepare the second-opinion prompt file (prerequisite for the Bash call).
 
@@ -369,6 +377,8 @@ After fixes, run the full test suite again to confirm nothing broke.
 ## Step 8b: Extended Round (only when Review depth is `extended`)
 
 Skip this step entirely if the plan's `Review depth` field (captured in Step 1) is `single`. Otherwise, run one additional parallel code review on the post-fix diff. **Hard cap: one extra round only.** Even if round 2 surfaces new critical findings, do NOT run a round 3 — apply the Step 8 triage rule and proceed.
+
+Before launching round 2, output a one-line user-facing announcement: `Launching extended-depth round 2 code reviews (typical 5–15 min each, running in parallel).`
 
 Round 2 should be framed to look beyond what round 1 anchored on. Use the same parallel-launch mechanics as Step 7 (one Agent + one Bash invoking the dispatched second-opinion CLI, both in a single message), but with these differences:
 
