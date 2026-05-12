@@ -234,7 +234,7 @@ Declaration format: `### Step N: Title — strategy: <value>`.
 
 Strategy labels are **opt-in, not mandatory**. A plan with NO strategy labels on any step is interpreted as all `red-first` (current behavior, unchanged from pre-Stage-2). A plan with labels on any step MUST label every step — mixing labeled and unlabeled steps in the same plan is malformed and is caught by both the `/plan-review` pre-launch gate and the `/implement-plan` pre-dispatch validation.
 
-Plans authored by `/plan-review` from `claude-config/skills/` opt in by labeling every step (Claude's planner is updated to do this). Plans authored via the Codex CLI (which uses `codex-config/skills/`, not modified by Stage 2) do not opt in; they produce label-less plans which are then implemented as all `red-first`. Both paths are valid; both are backward compatible.
+Plans authored by `/plan-review` (claude-config) and `$plan-review` (codex-config) both opt in by labeling every step — both planners are configured to do so. Plans authored outside these skills (hand-written, legacy, pre-Stage-2, or via external tooling) without `test_strategy` labels remain valid and are interpreted as all-`red-first`. All paths are valid; all are backward compatible.
 
 ### Step shapes (one per strategy)
 
