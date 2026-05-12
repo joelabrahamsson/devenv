@@ -1,6 +1,6 @@
 ---
 name: finalize
-description: Assess whether the implementation warrants an ADR (when warranted, generate one drawing on the plan's Motivation & Context); draw on Motivation & Context to write a richer commit message either way; clean up the plan file; then commit/push or create a PR. Invoke with $finalize optionally followed by the path to the plan file.
+description: Assess whether the implementation warrants an ADR (when warranted, generate one drawing on the plan's Motivation & Context); propose a Patterns entry for the project's agent doc when the implementation mirrored an existing exemplar; draw on Motivation & Context to write a richer commit message either way; clean up the plan file; then commit/push or create a PR. Invoke with $finalize optionally followed by the path to the plan file.
 ---
 
 # Finalize Implementation
@@ -21,8 +21,14 @@ Read the plan file in full.
 
 Understand what was implemented by examining:
 - The plan file — pay specific attention to the **Motivation & Context** section (problem, constraints, alternatives considered, decision rationale). This is the primary source of "why"; the rest of the plan is "what" and "how". *If the plan predates this requirement and has no Motivation & Context section, fall back to the Goal section and Revision Notes for "why" content, and note the missing motivation in the Step 3 assessment.*
+- The plan's **Behavioral Contract** section — the user-approved Gherkin scenarios (or pointer to spec file, or pointer+supplemental, or escape line). This is the authoritative source of "what user-observable behavior was promised" and feeds Step 3's ADR-worthiness decision plus the ADR's behavioral specification in Step 4. *If the plan is a legacy plan with no Behavioral Contract section, fall back to the Implementation Steps and note the absence in Step 4.*
+- The plan's **Revision Notes** section — including any mid-implementation contract changes recorded there (typically from `$implement-plan`'s OUT_OF_CONTRACT_BEHAVIOR handling). When generating the ADR, use the **final state** of the Behavioral Contract section, which includes any mid-implementation additions; do NOT reconstruct an earlier state.
 - The git diff or recent commits (`git log --oneline -20` and `git diff` or `git diff HEAD`) — used to verify what was actually shipped versus what the plan promised.
 - Any AGENTS.md or CLAUDE.md for project conventions.
+
+Also scan the plan for **exemplar references** that signal a Patterns entry may be worth proposing in Step 5: explicit `mirror <path>` language in any step's prose, or the canonical Patterns citation phrase `per Patterns: "<shape title>"` (see `~/workflows/planning/patterns-format.md`). Record any matches; Step 5 uses them as its trigger signal.
+
+Also scan the plan for **per-step `test_strategy` labels** (Stage 2). Scan ONLY the implementation-step headings under the plan's `## Implementation Steps` section — do NOT count heading-like text that appears inside step prose, fixtures, or examples elsewhere in the plan. For each implementation-step heading of the form `### Step N: Title — strategy: <value>` (the value being one of `red-first`, `build-then-test`, `property-based`, `integration-only`), record the strategy. Build a distribution map (counts per strategy) across all labeled steps. If NO step in `## Implementation Steps` carries a `— strategy:` suffix, the plan is unlabeled (legacy / pre-Stage-2); record label-mode as `unlabeled` and skip the distribution map. If SOME steps in `## Implementation Steps` are labeled and others are not, the plan is malformed per `~/workflows/planning/plan-format.md` § TDD Step Structure; stop and surface the malformed-plan finding to the user before proceeding. The distribution map and label-mode feed Step 4's ADR generation.
 
 ## Step 3: ADR Worthiness Decision
 
@@ -33,17 +39,19 @@ Not every implementation warrants an ADR. Decide based on the Motivation & Conte
 - A non-trivial constraint shaped the design and isn't visible in the code (e.g., regulatory, performance, compatibility, security trade-off).
 - A new architectural pattern, convention, or boundary was introduced.
 - The adversarial reviews materially changed the approach (Revision Notes show real pivots, not just polish).
+- The plan's Behavioral Contract section is **substantive** — full Gherkin scenarios, pointer to a spec file, or pointer+supplemental. Substantive contracts mean the change has user-observable behavior worth recording durably in an ADR.
 
 **An ADR is NOT warranted when:**
 - Motivation & Context is replaced by `*Trivial change …*` or all four fields are `n/a`.
 - The change is mechanical (typo fixes, dependency bumps, formatting) or obvious from the diff.
 - There were no real alternatives — the chosen approach was the only sensible one.
+- The plan's Behavioral Contract section uses an **escape line** (e.g., `*No behavioral change — internal refactor.*`) AND Motivation & Context is also trivial. An escape line alone doesn't disqualify the ADR (a substantial refactor with rich motivation can still warrant one), but it weakens the case when motivation is also thin.
 
-**Tiebreaker (when in doubt):** lean toward warranted if the Motivation & Context section has non-empty, non-`n/a` content in **Alternatives considered** OR **Decision rationale**. Lean against if those two fields are both `n/a` or trivial. This anchors the call to the plan's actual reasoning rather than free-floating judgment.
+**Tiebreaker (when in doubt):** lean toward warranted if the Motivation & Context section has non-empty, non-`n/a` content in **Alternatives considered** OR **Decision rationale**, OR if the Behavioral Contract section is substantive. Lean against if Motivation & Context's reasoning fields are both `n/a` or trivial AND the Behavioral Contract is an escape line. This anchors the call to the plan's actual reasoning rather than free-floating judgment.
 
 Form your assessment, then ask the user directly to confirm: present *"My read: ADR [warranted | not warranted] because [one-sentence reason]. Proceed?"* and list three options the user can choose by number — `1) Yes — generate ADR`, `2) No — skip ADR`, `3) Override — let me explain`. Wait for the user's answer before proceeding. Do NOT auto-proceed.
 
-If the user chooses **skip ADR**, jump to Step 5 (Remove Plan File). The commit message in Step 6 still draws on Motivation & Context to explain the *why*.
+If the user chooses **skip ADR**, proceed to Step 5 (Propose Patterns Entry). The commit message in Step 7 still draws on Motivation & Context to explain the *why*.
 
 ## Step 4: Generate ADR
 
@@ -72,7 +80,23 @@ Draw primarily from the plan's **Motivation & Context** section — specifically
 ## Decision
 
 <What was decided? What approach was chosen and why?
-Draw primarily from Motivation & Context's **Alternatives considered** and **Decision rationale**. Use Implementation Approach and Revision Notes only to ground the discussion in what was concretely built.>
+Draw primarily from Motivation & Context's **Alternatives considered** and **Decision rationale**. Use Implementation Approach and Revision Notes only to ground the discussion in what was concretely built.
+
+**Test strategy distribution** (Stage-2 only; conditional). If the plan's captured label-mode (from Step 2) is `labeled` AND the distribution map includes at least one strategy other than `red-first`, append a paragraph in this form:
+
+> **Test strategy distribution.** \<count\> red-first, \<count\> build-then-test, \<count\> property-based, \<count\> integration-only. \<Optional one-sentence rationale — include ONLY when the plan's Motivation & Context, Implementation Approach, or step prose explicitly supports it; do NOT infer or fabricate a rationale.\>
+
+List strategies in the fixed order shown above (red-first, build-then-test, property-based, integration-only). Omit any strategy with zero count. Omit the entire paragraph if the plan was unlabeled (label-mode `unlabeled`) OR the distribution is uniform `red-first` (the legacy default conveys no design signal).>
+
+## Behavioral Contract
+
+<The user-observable behavior the implementation delivers. Populate this section from the plan's `## Behavioral Contract` section per the form (use the FINAL state after any mid-implementation Revision Notes additions):
+
+- **Full Gherkin contract:** copy the scenarios verbatim (Feature blocks + Gherkin fences + Invariants sub-section if present).
+- **Pointer form:** include the pointer line + a copy of the relevant scenarios from the referenced spec file. The ADR should be self-contained, so dereference the pointer here.
+- **Pointer + supplemental:** include both the dereferenced spec scenarios AND the supplemental scenarios from the plan.
+- **Escape line:** include the escape line verbatim. This documents that the change was deliberately scoped to have no user-observable behavior.
+- **Legacy plan (no section):** omit this section entirely.>
 
 ## Consequences
 
@@ -86,25 +110,74 @@ Draw primarily from Motivation & Context's **Alternatives considered** and **Dec
 <What could go wrong? What should be watched?>
 ```
 
-The ADR should capture the *reasoning* behind decisions, not just describe what was built. Focus on:
+The ADR should capture the *reasoning* behind decisions PLUS the *behavioral specification* of the change. Focus on:
 - Why this approach was chosen over alternatives
 - What trade-offs were made and why
 - What constraints influenced the design
 - What the adversarial reviews caught and how it changed the approach (from the plan's revision notes)
+- The user-observable behavior the change delivers (Behavioral Contract section)
+- The test strategy distribution when it represents a meaningful design choice (Decision section sub-paragraph, Stage-2 labeled plans only)
 - Anything non-obvious that a future developer (or AI assistant) should know
 
-## Step 5: Remove Plan File
+## Step 5: Propose Patterns Entry
+
+This step gives the implementer a low-friction way to register newly-canonical exemplars in the project's `## Patterns` section while the work is still fresh. See `~/workflows/planning/patterns-format.md` for the section's format, location, and canonical citation phrase.
+
+**1. Detect the signal — plan-prose signals only.**
+
+Use the exemplar references recorded in Step 2. Two acceptable signals:
+
+- **(a)** Explicit `mirror <path>` language in any step's prose.
+- **(b)** The canonical Patterns citation phrase `per Patterns: "<shape title>"` (literal text per `patterns-format.md`).
+
+If neither (a) nor (b) is present, skip the rest of this step entirely — no prompt, proceed to Step 6. Do NOT scan the implementation diff for structural similarity to other files; that is `$workflow-audit`'s job, and duplicating it at commit time risks spurious prompts and conflates skill responsibilities.
+
+**2. Locate the agent doc and Patterns section.**
+
+Read the project's `AGENTS.md` and `CLAUDE.md` (whichever exists; if both, use whichever already contains a `## Patterns` section, otherwise prefer the doc the project's other skills consult — render a numbered text prompt to ask the user if uncertain). Locate the `## Patterns` heading, or note that the section does not yet exist. If the section is missing and the user accepts the proposal in sub-step 5, create the section at the end of the agent doc before appending the entry.
+
+**3. Duplicate / overlap check (skip-without-prompting cases).**
+
+Before drafting any prompt, check for the cases where proposing would be redundant or unwanted:
+
+- If the signal was clause (b) and the citation's shape title is already an entry in `## Patterns`, that entry already exists — skip without prompting.
+- If clause (a) named a `<path>` that is already the **exemplar** of an existing entry (same path on the entry's Exemplar line), the file is already canonical — skip without prompting.
+- If the `## Patterns` section already contains 15 or more entries and accepting would push it past 15, surface that fact to the user in sub-step 5's prompt (see `patterns-format.md` § Length target) and offer the option to skip, merge with a related existing entry, or accept and grow past the soft cap. Do not silently grow the section past 15.
+
+**4. Draft the proposed entry.**
+
+Following `~/workflows/planning/patterns-format.md` § Entry format, draft a 3–5 line entry:
+- **Shape** — a short noun-phrase the entry is identified by.
+- **Exemplar** — the file path of the canonical example (the file the implementation mirrored, OR the new file if it's strictly cleaner than the original; ask the user via a numbered text prompt if uncertain).
+- **What to mirror** — 1–2 lines naming the specific elements. Pull this content from the plan's Implementation Approach / step prose where the exemplar was named, plus any specifics visible in the diff (validation order, error envelope shape, hook composition, etc.).
+- **Anti-pattern** (optional) — only include if the exemplar has a clearly-deprecated section or transitional code the next implementer should not copy.
+
+**5. Prompt the user.**
+
+Present the drafted entry and list three options the user can choose by number:
+
+- `1) Yes — add to this commit` (recommended) — appends the entry to `## Patterns` in the chosen agent doc and stages the file so the change is part of the same commit as the implementation.
+- `2) Edit draft first` — the user types the revised entry text directly into their reply; the skill applies it verbatim, then re-presents the choice (Yes / Edit again / Skip).
+- `3) Skip` — proceed to Step 6 without modifying the agent doc.
+
+If the duplicate-check in sub-step 3 surfaced a length-cap warning, include that warning in the prompt question text so the user can decide with full context.
+
+**6. Apply on Accept.**
+
+On Yes: append the entry to the section (creating `## Patterns` at the end of the doc if it didn't exist), stage the modified agent doc via `shell` (`git add AGENTS.md` or `git add CLAUDE.md`), and proceed to Step 6. The Patterns change is part of the same commit as the implementation, which keeps the entry registered atomically with the work it documents.
+
+## Step 6: Remove Plan File
 
 Delete the plan file from `docs/plans/`.
 
-## Step 6: Ship
+## Step 7: Ship
 
 Determine the current git state:
 - What branch are we on?
 - Is it `main` or a feature branch?
 - Are changes staged or unstaged?
 
-Stage all changes: implementation + plan file deletion + ADR if one was generated in Step 4.
+Stage all changes: implementation + plan file deletion + ADR if one was generated in Step 4 + Patterns entry if one was added in Step 5.
 
 Present options based on git state:
 
@@ -117,6 +190,8 @@ Present options based on git state:
 2. **Commit, push, and create PR** (if one doesn't already exist for this branch)
 
 When committing, write a clear commit message summarizing what was implemented and why. If an ADR was generated, include the ADR reference. If no ADR was generated (skip path), draw on the plan's Motivation & Context section to write a richer commit message — surface the why, not just the what.
+
+For plans with a substantive Behavioral Contract section (full Gherkin, pointer, or pointer+supplemental), include a brief "Behavior delivered:" line in the commit message body listing 1–2 short scenario-title bullets so the contract is visible when scrolling git history. For escape-line plans, omit that line — the commit message reflects Motivation & Context only.
 
 When creating a PR:
 - Use a concise title (under 70 characters)
