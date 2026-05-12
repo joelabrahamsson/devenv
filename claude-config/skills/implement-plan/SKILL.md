@@ -264,7 +264,7 @@ Before code review, verify that every concrete behavior the plan promised is act
    - A reminder to read `~/workflows/planning/plan-conformance-criteria.md` for the output format
    - **Output instruction**: "Write your full audit (promise table, gaps, unpromised additions, verdict) to `/tmp/plan-conformance-audit.md`. In your final message back to the orchestrator, return ONLY: the verdict (`pass` / `gaps` / `unscorable`), the count of gaps by severity, and the file path. Do NOT paste the full table or analysis into your final message — the orchestrator will read the file. This avoids subagent-result truncation."
 
-3. After the agent completes, read `/tmp/plan-conformance-audit.md` to get the full audit, then examine its verdict:
+3. After the agent completes, read `/tmp/plan-conformance-audit.md` to get the full audit. If the file does not exist, or is clearly incomplete (e.g., no promise table, no verdict), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full audit to /tmp/plan-conformance-audit.md. Complete the audit per `plan-conformance-criteria.md` (including its Delivery Protocol) and write the file before returning." Then re-read the file. Examine the verdict:
    - **`pass`** — proceed to Step 7
    - **`gaps`** — see the malformed-plan marker routing below before deciding whether to auto-fix.
    - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this in your end-of-step summary and proceed to Step 7; do not re-run.
@@ -306,7 +306,7 @@ Launch the `code-reviewer` agent with a prompt that includes:
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read the plan and CLAUDE.md/AGENTS.md directly.
 
-After the agent finishes, read `/tmp/claude-code-review.md` to get the full review for consolidation in Step 8.
+After the agent finishes, read `/tmp/claude-code-review.md` to get the full review for consolidation in Step 8. If the file does not exist or is clearly incomplete (e.g., no findings sections), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full review to /tmp/claude-code-review.md. Complete the review per `code-review-criteria.md` (including its Delivery Protocol) and write the file before returning." Then re-read the file.
 
 ### 7b: Second-opinion Reviewer (configurable via `$CLAUDE_REVIEWER`)
 
@@ -330,22 +330,21 @@ Do NOT paste the plan or CLAUDE.md/AGENTS.md contents into the prompt — the re
 
 **Dispatch on the captured value.** Take exactly one of these branches:
 
-- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes):
+- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes). Pipe the prompt file on stdin to avoid argv-length limits on long reviews:
 
   ```
-  cd /workspace && copilot -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-code-review-prompt.txt | copilot \
     --model "$REVIEWER_COPILOT_MODEL" \
     --available-tools='view,glob,rg' \
     --no-ask-user
   ```
 
-- **`codex` branch** — run in the background (same `run_in_background` and timeout):
+- **`codex` branch** — run in the background (same `run_in_background` and timeout). Pipe the prompt file on stdin:
 
   ```
-  cd /workspace && codex exec \
+  cd /workspace && cat /tmp/second-opinion-code-review-prompt.txt | codex exec \
     --sandbox read-only \
-    --skip-git-repo-check \
-    "$(cat /tmp/second-opinion-code-review-prompt.txt)"
+    --skip-git-repo-check
   ```
 
 Notes (apply to both branches):

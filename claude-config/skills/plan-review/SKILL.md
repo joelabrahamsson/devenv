@@ -195,7 +195,7 @@ Launch the `adversarial-reviewer` agent with a prompt that includes:
 
 Do NOT paste the plan contents into the agent prompt. The agent has read tools and should read files directly.
 
-After the agent finishes, read `/tmp/claude-plan-review.md` to get the full review for consolidation in Step 4. If the file does not exist or is clearly incomplete (e.g., no findings sections), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full review to /tmp/claude-plan-review.md. Complete the review and write the file before returning."
+After the agent finishes, read `/tmp/claude-plan-review.md` to get the full review for consolidation in Step 4. If the file does not exist or is clearly incomplete (e.g., no findings sections), the agent stopped early — use `SendMessage` to ping it back with: "You did not write the full review to /tmp/claude-plan-review.md. Complete the review per `review-criteria.md` (including its Delivery Protocol) and write the file before returning."
 
 ### 3b: Second-opinion Reviewer (configurable via `$CLAUDE_REVIEWER`)
 
@@ -219,27 +219,26 @@ Do NOT paste the plan contents or CLAUDE.md/AGENTS.md into the prompt — the re
 
 **Dispatch on the captured value.** Take exactly one of these branches:
 
-- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes):
+- **`copilot` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms = 15 minutes). Pipe the prompt file on stdin to avoid argv-length limits on long reviews:
 
   ```
-  cd /workspace && copilot -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-plan-review-prompt.txt | copilot \
     --model "$REVIEWER_COPILOT_MODEL" \
     --available-tools='view,glob,rg' \
     --no-ask-user
   ```
 
-  `--available-tools='view,glob,rg'` restricts Copilot to read-only tools. `--no-ask-user` makes it work autonomously. `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env.
+  `--available-tools='view,glob,rg'` restricts Copilot to read-only tools. `--no-ask-user` makes it work autonomously. `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env. Piping on stdin (rather than `-p "$(cat …)"`) sidesteps `ARG_MAX` overflow on large prompts.
 
-- **`codex` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms):
+- **`codex` branch** — run in the background (`run_in_background: true`, Bash timeout 900000ms). Pipe the prompt file on stdin:
 
   ```
-  cd /workspace && codex exec \
+  cd /workspace && cat /tmp/second-opinion-plan-review-prompt.txt | codex exec \
     --sandbox read-only \
-    --skip-git-repo-check \
-    "$(cat /tmp/second-opinion-plan-review-prompt.txt)"
+    --skip-git-repo-check
   ```
 
-  `--sandbox read-only` is the parallel of Copilot's `--available-tools='view,glob,rg'` — it limits Codex to read-only filesystem operations. `--skip-git-repo-check` is precautionary. The existing `approval_policy = "never"` in `~/.codex/config.toml` already suppresses confirmation prompts.
+  `--sandbox read-only` is the parallel of Copilot's `--available-tools='view,glob,rg'` — it limits Codex to read-only filesystem operations. `--skip-git-repo-check` is precautionary. The existing `approval_policy = "never"` in `~/.codex/config.toml` already suppresses confirmation prompts. Piping on stdin (rather than passing the prompt as a positional argument) sidesteps `ARG_MAX` overflow on large prompts.
 
 Notes (apply to both branches):
 - The second-opinion CLI runs in the background. You will be notified when it completes. If the adversarial agent review (3a) finishes first and the second-opinion CLI is still running, inform the user that the Claude review is done and the second opinion is still in progress. If it has been running for more than 5 minutes when the agent review finishes, let the user know it's taking longer than expected but is still in progress.

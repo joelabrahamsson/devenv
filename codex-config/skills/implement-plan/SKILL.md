@@ -270,7 +270,7 @@ Before code review, verify that every concrete behavior the plan promised is act
    - A reminder to read `~/workflows/planning/plan-conformance-criteria.md` for the output format
    - **Output instruction**: "Write your full audit (promise table, gaps, unpromised additions, verdict) to `/tmp/plan-conformance-audit.md`. In your final message back to the orchestrator, return ONLY: the verdict (`pass` / `gaps` / `unscorable`), the count of gaps by severity, and the file path. Do NOT paste the full table or analysis into your final message — the orchestrator will read the file. Treat writing the file as the completion gate."
 
-4. Use `wait_agent` to collect the result. After the subagent completes, read `/tmp/plan-conformance-audit.md` to get the full audit, then examine the verdict:
+4. Use `wait_agent` to collect the result. After the subagent completes, read `/tmp/plan-conformance-audit.md` to get the full audit. If the file does not exist, or is clearly incomplete (e.g., no promise table, no verdict), the subagent stopped early without honoring the Delivery Protocol — dispatch a fresh `spawn_agent` with the same prompt as in sub-step 3 plus this prefix: "The previous attempt did not write the full audit to /tmp/plan-conformance-audit.md. Re-run the audit per `plan-conformance-criteria.md` (including its Delivery Protocol) from scratch and write the file before returning." Then re-read the file. Examine the verdict:
    - **`pass`** — proceed to Step 7
    - **`gaps`** — see the malformed-plan marker routing below before deciding whether to auto-fix.
    - **`unscorable`** — the plan was too abstract to enumerate concrete promises. Note this in your end-of-step summary and proceed to Step 7; do not re-run.
@@ -312,6 +312,9 @@ Read `references/code-reviewer.md` for the subagent instructions template. Use `
 - The instructions from the reference file
 - The path to the plan file
 - **If acceptance criteria exist**: The spec file paths and a note: "These are specification tests (human-owned). Check that (1) they were not modified, and (2) the implementation semantically satisfies the behavior they describe — not just that the tests pass mechanically."
+- **Output instruction**: "Write your full review to `/tmp/codex-code-review.md`. In your final message back to the orchestrator, return ONLY: an overall verdict, finding counts by severity (critical/major/minor/nit), and the file path. Do NOT paste the full review into your final message — the orchestrator will read the file. Treat writing the file as the completion gate."
+
+After `wait_agent`, read `/tmp/codex-code-review.md` for the full review used in Step 8. If the file does not exist or is clearly incomplete (e.g., no findings sections), the subagent stopped early without honoring the Delivery Protocol — dispatch a fresh `spawn_agent` with the same prompt plus this prefix: "The previous attempt did not write the full review to /tmp/codex-code-review.md. Re-run the review per `code-review-criteria.md` (including its Delivery Protocol) from scratch and write the file before returning." Then re-read the file.
 
 ### 7b: Second-opinion Reviewer (configurable via `$CODEX_REVIEWER`)
 
@@ -335,10 +338,10 @@ Do NOT paste the plan or convention files into the prompt — the reviewer has i
 
 **Dispatch on the captured value.** Take exactly one of these branches:
 
-- **`copilot` branch** — run in the background with a 15-minute timeout:
+- **`copilot` branch** — run in the background with a 15-minute timeout. Pipe the prompt file on stdin to avoid argv-length limits on long reviews:
 
   ```
-  cd /workspace && copilot -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-code-review-prompt.txt | copilot \
     --model "$REVIEWER_COPILOT_MODEL" \
     --available-tools='view,glob,rg' \
     --no-ask-user
@@ -346,10 +349,10 @@ Do NOT paste the plan or convention files into the prompt — the reviewer has i
 
   Note: this differs from the previous behaviour, which hardcoded `--model sonnet` regardless of user preference; the configured model now applies.
 
-- **`claude` branch** — run in the background with a 15-minute timeout:
+- **`claude` branch** — run in the background with a 15-minute timeout. Pipe the prompt file on stdin:
 
   ```
-  cd /workspace && claude -p "$(cat /tmp/second-opinion-code-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-code-review-prompt.txt | claude -p \
     --output-format text \
     --dangerously-skip-permissions \
     --no-session-persistence \

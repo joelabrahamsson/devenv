@@ -199,6 +199,9 @@ Read `references/adversarial-reviewer.md` for the subagent instructions template
 - The instructions from the reference file
 - The original goal/task description
 - The path to the plan file
+- **Output instruction**: "Write your full review to `/tmp/codex-plan-review.md`. In your final message back to the orchestrator, return ONLY: an overall verdict and finding counts by severity (Critical / Suggested / Minor), plus the file path. Do NOT paste the full review into your final message — the orchestrator will read the file. Treat writing the file as the completion gate."
+
+After `wait_agent`, read `/tmp/codex-plan-review.md` for the full review used in Step 4. If the file does not exist or is clearly incomplete (e.g., no findings sections), the subagent stopped early without honoring the Delivery Protocol — dispatch a fresh `spawn_agent` with the same prompt plus this prefix: "The previous attempt did not write the full review to /tmp/codex-plan-review.md. Re-run the review per `review-criteria.md` (including its Delivery Protocol) from scratch and write the file before returning." Then re-read the file.
 
 ### 3b: Second-opinion Reviewer (configurable via `$CODEX_REVIEWER`)
 
@@ -222,28 +225,28 @@ Do NOT paste file contents into the prompt — the reviewer has its own file-rea
 
 **Dispatch on the captured value.** Take exactly one of these branches:
 
-- **`copilot` branch** — run in the background with a 15-minute timeout:
+- **`copilot` branch** — run in the background with a 15-minute timeout. Pipe the prompt file on stdin to avoid argv-length limits on long reviews:
 
   ```
-  cd /workspace && copilot -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-plan-review-prompt.txt | copilot \
     --model "$REVIEWER_COPILOT_MODEL" \
     --available-tools='view,glob,rg' \
     --no-ask-user
   ```
 
-  `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env. Note: this differs from the previous behaviour, which hardcoded `--model sonnet` regardless of user preference; the configured model now applies.
+  `$REVIEWER_COPILOT_MODEL` expands at exec time from the container env. Note: this differs from the previous behaviour, which hardcoded `--model sonnet` regardless of user preference; the configured model now applies. Piping on stdin (rather than `-p "$(cat …)"`) sidesteps `ARG_MAX` overflow on large prompts.
 
-- **`claude` branch** — run in the background with a 15-minute timeout:
+- **`claude` branch** — run in the background with a 15-minute timeout. Pipe the prompt file on stdin:
 
   ```
-  cd /workspace && claude -p "$(cat /tmp/second-opinion-plan-review-prompt.txt)" \
+  cd /workspace && cat /tmp/second-opinion-plan-review-prompt.txt | claude -p \
     --output-format text \
     --dangerously-skip-permissions \
     --no-session-persistence \
     --allowedTools "Read Glob Grep"
   ```
 
-  `--no-session-persistence` keeps the inner Claude from writing a session file that could collide with an outer Codex session. `--allowedTools "Read Glob Grep"` constrains the inner Claude to read-only tools. `--output-format text` ensures plain-text stdout suitable for capture.
+  `--no-session-persistence` keeps the inner Claude from writing a session file that could collide with an outer Codex session. `--allowedTools "Read Glob Grep"` constrains the inner Claude to read-only tools. `--output-format text` ensures plain-text stdout suitable for capture. Piping on stdin sidesteps `ARG_MAX` overflow on large prompts.
 
 Notes (apply to both branches):
 - If the Codex subagent review (3a) finishes first and the second-opinion CLI is still running, inform the user.
