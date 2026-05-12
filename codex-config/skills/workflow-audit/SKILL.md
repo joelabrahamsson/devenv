@@ -249,7 +249,7 @@ How would you like to proceed?
 2) Open for free-text edit — type the merged entry text directly in your reply
 3) Skip (keep existing)
 
-Reply with 1, 2, or type your revised entry text.
+Reply with 1, 3, or type your revised entry text directly (option 2).
 ```
 
 If the user replies with `2` or types entry text directly, apply it verbatim to the agent doc. If `1`, apply the proposed text. If `3`, leave the existing entry untouched.
@@ -262,12 +262,11 @@ Present the stale entry text to the user via a follow-up numbered text prompt:
 Stale entry (exemplar file not found):
 <stale entry text>
 
-How would you like to resolve this?
+How would you like to resolve this? Type your response directly:
 
-1) Type the corrected exemplar path, or `remove` to delete the entry,
-   or `keep as-is` to leave it untouched (accept the staleness as historical guidance)
-
-Type your response directly.
+- A file path → updates the entry's Exemplar line to that path.
+- `remove` → deletes the entry from `## Patterns`.
+- `keep as-is` → leaves the entry untouched (accept the staleness as historical guidance).
 ```
 
 Apply the response verbatim:
