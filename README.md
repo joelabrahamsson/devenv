@@ -149,9 +149,10 @@ Shared workflow content (review criteria, plan format, spec format, TDD structur
 | Skill | Description |
 |---|---|
 | `$bdd-spec [feature]` | Same conversational spec authoring workflow |
-| `$plan-review [description]` | Same workflow, uses Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER` for parallel reviews. *Does not currently derive a Behavioral Contract or label per-step test_strategy — plans default to legacy `red-first` for every step. Parity port queued.* |
-| `$implement-plan [path]` | Same workflow, uses Codex subagents + configured second-opinion CLI per `$CODEX_REVIEWER` for code reviews. *Conformance audit operates in fallback mode for unlabeled plans (no per-step ownership).* |
-| `$finalize [path]` | Same workflow (mostly platform-agnostic) |
+| `$plan-review [description]` | Same workflow, uses Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER` for parallel reviews. Derives a user-approved Behavioral Contract (Gherkin), creates a TDD plan with per-step test_strategy labels |
+| `$implement-plan [path]` | Same workflow, uses Codex subagents following the step's declared test_strategy, runs a conformance audit verifying every Behavioral Contract scenario is covered, then a boy scout cleanup pass and parallel code reviews (Codex subagent + configured second-opinion CLI per `$CODEX_REVIEWER`) |
+| `$finalize [path]` | Assesses ADR worthiness from Motivation & Context, generates ADR in `docs/adrs/` when warranted, proposes a `## Patterns` entry when the implementation mirrored an existing exemplar, deletes plan file, offers to commit or create PR |
+| `$workflow-audit` | Audits the project for conformance with the planning workflow — proposes new `## Patterns` entries for recurring shapes, verifies existing entries cite real files, flags major features missing BDD specs (read-only proposal; writes only on user Accept) |
 
 ### Specification tests
 
@@ -186,25 +187,25 @@ Each plan produced by `/plan-review` includes a `## Behavioral Contract` section
 
 Each implementation step declares a `test_strategy`: `red-first` (the strict TDD default), `build-then-test` (pattern-following work with a non-tautology safeguard), `property-based` (pure transformations with extractable invariants), or `integration-only` (pure wiring or declaration, covered by a named parent step). Per-step `**Covers:**` lines map contract scenarios and invariants to the owning step. The post-implementation conformance audit verifies every promise maps to a test that ran and passed; misclassified `integration-only` steps fail the audit. See `~/workflows/planning/plan-format.md` § TDD Step Structure for the classification heuristics.
 
-When the plan opts into labels and the distribution includes any non-`red-first` strategy, Claude's `/finalize` carries the distribution forward into the generated ADR's Decision section as a Test strategy distribution paragraph, preserving the verification design choice durably after the plan file is deleted. Codex's `$finalize` does not yet do this — Codex-config parity for Stages 1+2 (which this surfacing step rides on) is a tracked follow-up.
+When the plan opts into labels and the distribution includes any non-`red-first` strategy, both `/finalize` and `$finalize` carry the distribution forward into the generated ADR's Decision section as a Test strategy distribution paragraph, preserving the verification design choice durably after the plan file is deleted.
 
-Strategy labels are opt-in per the format spec; Claude's `/plan-review` always opts in. Plans without labels (legacy or Codex-CLI-authored) are valid and treated as all-`red-first` for back-compat.
+Strategy labels are opt-in per the format spec. Plans authored via `$plan-review` opt in by labeling, matching `/plan-review`. Plans authored outside `$plan-review` (hand-written, legacy, pre-port) remain valid without labels and are treated as all-`red-first` for back-compat.
 
 ### Patterns and workflow audit
 
-Projects can maintain a `## Patterns` section in their CLAUDE.md or AGENTS.md — a curated 5–15-entry index mapping recurring problem-shapes to canonical exemplar files. Each entry is 3–5 lines (Shape, Exemplar path, What to mirror, optional Anti-pattern). Because Claude Code subagents auto-load the agent doc, every implementation subagent sees the section for free, which short-circuits the most common form of subagent overhead: re-greping to "find the right pattern."
+Projects can maintain a `## Patterns` section in their CLAUDE.md or AGENTS.md — a curated 5–15-entry index mapping recurring problem-shapes to canonical exemplar files. Each entry is 3–5 lines (Shape, Exemplar path, What to mirror, optional Anti-pattern). Because Claude Code subagents auto-load CLAUDE.md and Codex CLI subagents consult AGENTS.md, every implementation subagent across both ecosystems sees the section for free, which short-circuits the most common form of subagent overhead: re-greping to "find the right pattern."
 
 Curation is distributed across three skills:
 
-- **`/plan-review`** consults the section at design time and cites matching entries by name in plan steps using the canonical phrase `per Patterns: "<shape title>"`. Stale entries (cited file missing) surface inline for free-text correction (`corrected path`, `remove`, or `keep as-is`).
-- **`/finalize`** proposes a new entry at commit time when the plan referenced an exemplar via `mirror <path>` or the canonical citation phrase. Detection is strictly plan-prose-based; no diff scanning (that's `/workflow-audit`'s job).
-- **`/workflow-audit`** is the back-fill path: scans the codebase for recurring shapes not yet in the section (3+ representatives, excluding generated, vendor, test, fixture, migration, and type-only files), validates existing entries cite real files, and flags features that lack BDD spec coverage (cross-referencing the full spec directory rather than name-matching). Read-only proposal phase + write only on user Accept; per-stage cap of 5 items per run ranked by confidence; re-run for additional batches.
+- **`/plan-review` and `$plan-review`** consult the section at design time and cite matching entries by name in plan steps using the canonical phrase `per Patterns: "<shape title>"`. Stale entries (cited file missing) surface inline for free-text correction (`corrected path`, `remove`, or `keep as-is`).
+- **`/finalize` and `$finalize`** propose a new entry at commit time when the plan referenced an exemplar via `mirror <path>` or the canonical citation phrase. Detection is strictly plan-prose-based; no diff scanning (that's `/workflow-audit`'s job).
+- **`/workflow-audit` and `$workflow-audit`** is the back-fill path: scans the codebase for recurring shapes not yet in the section (3+ representatives, excluding generated, vendor, test, fixture, migration, and type-only files), validates existing entries cite real files, and flags features that lack BDD spec coverage (cross-referencing the full spec directory rather than name-matching). Read-only proposal phase + write only on user Accept; per-stage cap of 5 items per run ranked by confidence; re-run for additional batches.
 
 See `~/workflows/planning/patterns-format.md` for the section's format, canonical citation phrase, and rendered example. The skill's scope-boundary rule keeps `/workflow-audit` focused on project-level workflow artifacts — it does not absorb code quality, security, PR review, implementation conformance, or feature-specific planning.
 
 ### Testing and regression policy
 
-Both `/implement-plan` and `$implement-plan` follow strict TDD: subagents run a *targeted* (inner-loop) test command during RED/GREEN/REFACTOR for fast feedback, and the *regression bar* (the project's full-suite gate) runs at commit boundaries. The plan inherits the regression bar verbatim from the project's CLAUDE.md / AGENTS.md, or uses a strict "run everything on every commit" default if none is documented.
+Both `/implement-plan` and `$implement-plan` follow the strategy-specific TDD shape declared by each step: `red-first` → strict RED/GREEN/REFACTOR; `build-then-test` → IMPLEMENT/TESTS/RUN with a non-tautology safeguard; `property-based` → INVARIANTS/PROPERTY-TESTS/EXAMPLE-TESTS/RUN/GREEN; `integration-only` → IMPLEMENT/smoke-check covered by a named parent step. Subagents run a *targeted* (inner-loop) test command for fast feedback, and the *regression bar* (the project's full-suite gate) runs at commit boundaries. The plan inherits the regression bar verbatim from the project's CLAUDE.md / AGENTS.md, or uses a strict "run everything on every commit" default if none is documented.
 
 **Adjusting the bar.** The regression bar comes from your project's convention docs. To make it tiered (e.g., fast tests on every commit, e2e at end of phase), document the tiering in the project's CLAUDE.md or AGENTS.md — `/plan-review` and `$plan-review` capture it verbatim into the plan, and the implementer follows whatever the plan says.
 
@@ -316,13 +317,14 @@ The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (
 │   ├── AGENTS.md                      # Global Codex instructions for all projects
 │   └── skills/
 │       ├── bdd-spec/SKILL.md          # $bdd-spec — conversational BDD spec authoring
-│       ├── plan-review/               # $plan-review — planning with adversarial review
+│       ├── plan-review/               # $plan-review — planning with adversarial review; derives Behavioral Contract
 │       │   ├── SKILL.md
 │       │   └── references/            # Subagent instructions
 │       ├── implement-plan/            # $implement-plan — TDD implementation via subagents
 │       │   ├── SKILL.md
 │       │   └── references/            # Subagent instructions
-│       └── finalize/SKILL.md          # $finalize — ADR generation + ship
+│       ├── finalize/SKILL.md          # $finalize — ADR generation + Patterns proposal + ship
+│       └── workflow-audit/SKILL.md    # $workflow-audit — project conformance back-fill
 ├── fish/
 │   └── dev.fish                       # dev, dev-shell, dev-worktree, dev-rm functions
 └── docker-allowlist/
