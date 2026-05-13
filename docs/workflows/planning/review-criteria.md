@@ -87,6 +87,17 @@ Evaluate the plan against ALL of the following criteria:
 - Is the plan over-engineered for what's needed?
 - Are there simpler approaches that would achieve the same goal?
 
+### Failure Narratives
+
+The sections above ask whether the plan is correct. This section asks the inverse: imagine the plan failed — what's the most likely story? Use these prompts to surface failure modes the rest of the checklist doesn't catch. Findings here land in the standard severity buckets; be honest about likelihood when assigning severity — a speculative "could happen" with no concrete chain of events isn't Critical.
+
+- **Postmortem framing.** Imagine writing a postmortem for this plan three months from now. What's the most likely headline of how it went wrong? If you can construct that story in more than one sentence, flag the underlying risk and propose a plan change that would prevent or detect it earlier. Vague stories ("it could have bugs") aren't findings — drop them.
+- **Recovery paths.** If implementation gets halfway through and a step hits an unresolvable blocker, what's the recovery? Are there points of no return baked into the plan (a destructive migration, a deleted file, a published API contract) before sufficient validation has happened? Plans with irreversible gates past unvalidated assumptions are at risk.
+- **Hidden assumptions.** What does the plan assume about the codebase, environment, dependencies, or user behavior that isn't verified? "We'll extend `FooHelper`" assumes `FooHelper` has the right shape; "session expiry is 30 minutes" assumes the auth library is configured that way. Surface the assumptions and either suggest a verification sub-step, or flag the risk if verification isn't practical.
+- **Rollout and operational risk.** Beyond "migrations are reversible": what's the deployment sequence? Are feature flags needed and called out? Could the plan create a state where new code depends on data only a new migration produces, or vice versa? If the plan ships in multiple commits or PRs, can each be rolled back independently?
+- **Sequencing fragility.** Could implementing step N reveal that step 1 was wrong, forcing rework? Watch for cases where the only validation of an earlier decision happens many steps later — propose a smaller earlier check that would surface the issue sooner.
+- **Problem-framing drift.** Step back from the steps: is the plan solving the problem the user actually has, or a nearby problem that's easier to specify? Compare the Motivation & Context's problem statement against what the plan actually delivers — drift toward a more interesting or easier solution is a common silent failure mode.
+
 ### Specification Test Awareness
 If the plan has an "Acceptance Criteria" section referencing specification test files:
 - Does the plan treat the spec files as read-only? No step should modify specification test files.
