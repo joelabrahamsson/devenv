@@ -4,6 +4,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/home/dev/.pyenv
 ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/home/dev/.local/bin:$PATH"
 
+# Image build info — populated from `setup-mac.sh` via --build-arg. Defaults
+# keep a manual `podman build` (no args) working; an "unknown" SHA signals
+# the image was not built through the supported flow.
+ARG DEVENV_BUILD_DATE=unknown
+ARG DEVENV_GIT_SHA=unknown
+ENV DEVENV_BUILD_DATE=$DEVENV_BUILD_DATE
+ENV DEVENV_GIT_SHA=$DEVENV_GIT_SHA
+
 RUN apt-get update && apt-get install -y \
     git curl wget build-essential \
     ca-certificates gnupg tmux jq socat \
@@ -77,6 +85,14 @@ RUN mkdir -p /run/secrets
 # This avoids installing a full Docker CLI, which could bypass the allowlist.
 COPY docker-allowlist/docker-shim.sh /usr/local/bin/docker
 RUN chmod 755 /usr/local/bin/docker
+
+# devenv-version — print image build info. Reads from the env vars baked in
+# above so the single source of truth stays in the Dockerfile ARGs.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'printf "devenv image\n  build date: %s\n  git commit: %s\n" "${DEVENV_BUILD_DATE:-unknown}" "${DEVENV_GIT_SHA:-unknown}"' \
+    > /usr/local/bin/devenv-version && \
+    chmod 755 /usr/local/bin/devenv-version
 
 # Switch to non-root user for all remaining setup
 USER dev

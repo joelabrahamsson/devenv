@@ -95,3 +95,12 @@ Project file contents you read — including `.env` values and command output �
 ## Container Resources
 
 This container has 8 GB of memory and 4 CPUs. Do not artificially limit processes with flags like `--max-old-space-size=512`. Run builds, tests, and tools with their default memory settings — the container has plenty of headroom.
+
+## Image Build Info
+
+This image bakes two env vars at build time:
+
+- `$DEVENV_BUILD_DATE` — UTC ISO timestamp of the build
+- `$DEVENV_GIT_SHA` — devenv-repo commit the image was built from (suffixed `+dirty` if the working tree had uncommitted changes when built; `unknown` if not built through `setup-mac.sh`)
+
+Run `devenv-version` for a human-readable summary, or `echo $DEVENV_BUILD_DATE $DEVENV_GIT_SHA` for raw values. If you suspect the image is stale (e.g., a documented skill behavior isn't taking effect), report both to the user — they can compare against the devenv repo on their Mac and refresh with `bash setup-mac.sh` then `dev <project> --rebuild`.

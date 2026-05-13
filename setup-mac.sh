@@ -300,10 +300,22 @@ fi
 if [ "$CLAUDE_REVIEWER" = "codex" ]; then
     INSTALL_CODEX=1
 fi
+BUILD_DATE=$(date -u +%FT%TZ)
+if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    GIT_SHA=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)
+    if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain 2>/dev/null)" ]; then
+        GIT_SHA="${GIT_SHA}+dirty"
+    fi
+else
+    GIT_SHA="unknown"
+fi
 echo "    Build args: INSTALL_COPILOT=$INSTALL_COPILOT INSTALL_CODEX=$INSTALL_CODEX"
+echo "    Build info: DEVENV_BUILD_DATE=$BUILD_DATE DEVENV_GIT_SHA=$GIT_SHA"
 podman build \
     --build-arg INSTALL_COPILOT="$INSTALL_COPILOT" \
     --build-arg INSTALL_CODEX="$INSTALL_CODEX" \
+    --build-arg DEVENV_BUILD_DATE="$BUILD_DATE" \
+    --build-arg DEVENV_GIT_SHA="$GIT_SHA" \
     -t devenv -f "$SCRIPT_DIR/Dockerfile.dev" "$SCRIPT_DIR"
 
 echo ""

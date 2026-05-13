@@ -283,6 +283,28 @@ For Shift+Enter in iTerm2: Preferences → Profiles → Keys → Key Mappings �
 
 The image includes: fish shell, Node.js LTS, pnpm, yarn, nvm.fish, Python 3.13 (pyenv), uv, GitHub CLI, Claude Code (with codex-plugin-cc), Docker Compose, and Playwright system dependencies. Two CLIs are *optionally* installed based on the user's reviewer configuration (see [Reviewer configuration](#reviewer-configuration)): GitHub Copilot CLI (installed only if Copilot is selected as the reviewer for at least one skill family) and OpenAI Codex CLI (installed only if `$CLAUDE_REVIEWER=codex`).
 
+### Image build info
+
+Two env vars are baked in at build time so you can tell when the image was built and from which devenv-repo commit:
+
+- `$DEVENV_BUILD_DATE` — UTC ISO timestamp of the build
+- `$DEVENV_GIT_SHA` — devenv-repo short commit SHA, suffixed `+dirty` if the working tree had uncommitted changes when built (`unknown` if the image wasn't built through `setup-mac.sh`)
+
+From inside the container:
+
+```bash
+devenv-version                              # human-readable summary
+echo "$DEVENV_BUILD_DATE $DEVENV_GIT_SHA"   # raw values
+```
+
+To check whether the image is current, compare `$DEVENV_GIT_SHA` against your local devenv repo:
+
+```bash
+git -C ~/projects/devenv log -1 --format=%h   # on the Mac
+```
+
+If they differ, refresh with `bash setup-mac.sh` then `dev <project> --rebuild`. Claude and Codex agents are pointed at these values in their global instructions, so asking an agent "is this image current?" works too.
+
 ---
 
 ## Repository Structure
