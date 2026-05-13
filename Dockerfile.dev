@@ -4,14 +4,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYENV_ROOT=/home/dev/.pyenv
 ENV PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:/home/dev/.local/bin:$PATH"
 
-# Image build info — populated from `setup-mac.sh` via --build-arg. Defaults
-# keep a manual `podman build` (no args) working; an "unknown" SHA signals
-# the image was not built through the supported flow.
-ARG DEVENV_BUILD_DATE=unknown
-ARG DEVENV_GIT_SHA=unknown
-ENV DEVENV_BUILD_DATE=$DEVENV_BUILD_DATE
-ENV DEVENV_GIT_SHA=$DEVENV_GIT_SHA
-
 RUN apt-get update && apt-get install -y \
     git curl wget build-essential \
     ca-certificates gnupg tmux jq socat \
@@ -86,8 +78,10 @@ RUN mkdir -p /run/secrets
 COPY docker-allowlist/docker-shim.sh /usr/local/bin/docker
 RUN chmod 755 /usr/local/bin/docker
 
-# devenv-version — print image build info. Reads from the env vars baked in
-# above so the single source of truth stays in the Dockerfile ARGs.
+# devenv-version — print image build info. The script body reads
+# $DEVENV_BUILD_DATE / $DEVENV_GIT_SHA at runtime; the ARG/ENV
+# declarations that populate those vars sit at the end of this file so
+# rebuilds don't invalidate the cache for every layer below this point.
 RUN printf '%s\n' \
     '#!/bin/sh' \
     'printf "devenv image\n  build date: %s\n  git commit: %s\n" "${DEVENV_BUILD_DATE:-unknown}" "${DEVENV_GIT_SHA:-unknown}"' \
@@ -145,6 +139,19 @@ RUN mkdir -p /home/dev/.config/fish && printf '%s\n' \
     'alias g git' \
     'alias gst "git status"' \
     > /home/dev/.config/fish/config.fish
+
+# Image build info — populated from `setup-mac.sh` via --build-arg. Placed
+# at the very end of the Dockerfile so that changing the build date or SHA
+# (which happens on every rebuild) only invalidates these two metadata
+# layers, not the expensive layers above (apt-get, pyenv, npm installs).
+# `devenv-version` reads them at runtime, so it doesn't care that they're
+# declared after the script's install line. Defaults keep a manual
+# `podman build` (no args) working; "unknown" signals the image was not
+# built through the supported flow.
+ARG DEVENV_BUILD_DATE=unknown
+ARG DEVENV_GIT_SHA=unknown
+ENV DEVENV_BUILD_DATE=$DEVENV_BUILD_DATE
+ENV DEVENV_GIT_SHA=$DEVENV_GIT_SHA
 
 WORKDIR /workspace
 CMD ["fish"]
